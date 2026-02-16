@@ -134,84 +134,87 @@ const Signup = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="signup-form" noValidate>
-          <div className="form-stepper">
-            <div className={`step-item ${step === 1 ? 'active' : 'complete'}`}>
-              <span className="step-badge">1</span>
-              <span className="step-label">Basic Info</span>
-            </div>
-            <div className={`step-line ${step === 2 ? 'active' : ''}`}></div>
-            <div className={`step-item ${step === 2 ? 'active' : ''}`}>
-              <span className="step-badge">2</span>
-              <span className="step-label">Details</span>
-            </div>
-          </div>
+          <div className="signup-layout">
+            <aside className="signup-side">
+              <div className="role-selection">
+                <label className="role-label">I am a:</label>
+                <div className="role-options">
+                  <label className={`role-card ${formData.role === 'patient' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="patient"
+                      checked={formData.role === 'patient'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">👤</div>
+                    <span className="role-name">Patient</span>
+                  </label>
+                  
+                  <label className={`role-card ${formData.role === 'doctor' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="doctor"
+                      checked={formData.role === 'doctor'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">⚕️</div>
+                    <span className="role-name">Doctor</span>
+                  </label>
 
-          {/* Role Selection */}
-          <div className="role-selection">
-            <label className="role-label">I am a:</label>
-            <div className="role-options">
-              <label className={`role-card ${formData.role === 'patient' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="patient"
-                  checked={formData.role === 'patient'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">👤</div>
-                <span className="role-name">Patient</span>
-              </label>
-              
-              <label className={`role-card ${formData.role === 'doctor' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="doctor"
-                  checked={formData.role === 'doctor'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">⚕️</div>
-                <span className="role-name">Doctor</span>
-              </label>
-
-              <label className={`role-card ${formData.role === 'admin' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="admin"
-                  checked={formData.role === 'admin'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">🛡️</div>
-                <span className="role-name">Admin</span>
-              </label>
-            </div>
-          </div>
-
-          {step === 1 && (
-            <>
-              <div className="form-group">
-                <label htmlFor="username">
-                  {formData.role === 'admin' ? 'Admin Root Username' : 'Username'}
-                </label>
-                <div className="input-wrapper">
-                  <span className="input-icon">
-                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                      <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                    </svg>
-                  </span>
-                  <input
-                    type="text"
-                    id="username"
-                    name="username"
-                    value={formData.username}
-                    onChange={handleChange}
-                    placeholder={formData.role === 'admin' ? 'Enter admin root username' : 'Choose a username'}
-                    required
-                  />
+                  <label className={`role-card ${formData.role === 'admin' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="admin"
+                      checked={formData.role === 'admin'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">🛡️</div>
+                    <span className="role-name">Admin</span>
+                  </label>
                 </div>
               </div>
+            </aside>
+
+            <div className="signup-body">
+              <div className="form-stepper">
+                <div className={`step-item ${step === 1 ? 'active' : 'complete'}`}>
+                  <span className="step-badge">1</span>
+                  <span className="step-label">Basic Info</span>
+                </div>
+                <div className={`step-line ${step === 2 ? 'active' : ''}`}></div>
+                <div className={`step-item ${step === 2 ? 'active' : ''}`}>
+                  <span className="step-badge">2</span>
+                  <span className="step-label">Details</span>
+                </div>
+              </div>
+
+              {step === 1 && (
+                <>
+                  <div className="form-group">
+                    <label htmlFor="username">
+                      {formData.role === 'admin' ? 'Admin Root Username' : 'Username'}
+                    </label>
+                    <div className="input-wrapper">
+                      <span className="input-icon">
+                        <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          <path d="M12 11C14.2091 11 16 9.20914 16 7C16 4.79086 14.2091 3 12 3C9.79086 3 8 4.79086 8 7C8 9.20914 9.79086 11 12 11Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </span>
+                      <input
+                        type="text"
+                        id="username"
+                        name="username"
+                        value={formData.username}
+                        onChange={handleChange}
+                        placeholder={formData.role === 'admin' ? 'Enter admin root username' : 'Choose a username'}
+                        required
+                      />
+                    </div>
+                  </div>
 
               <div className="form-group">
                 <label htmlFor="email">Email Address</label>
@@ -277,48 +280,48 @@ const Signup = () => {
                   />
                 </div>
               </div>
-            </>
-          )}
-
-          {step === 2 && (
-            <div className="details-grid">
-              {formData.role !== 'admin' && (
-                <div className="form-group">
-                  <label htmlFor="phoneNumber">Phone Number 📞</label>
-                  <div className="input-wrapper plain">
-                    <input
-                      type="tel"
-                      id="phoneNumber"
-                      name="phoneNumber"
-                      value={formData.phoneNumber}
-                      onChange={handleChange}
-                      placeholder="Enter phone number"
-                      required
-                    />
-                  </div>
-                </div>
+                </>
               )}
 
-              {formData.role === 'patient' ? (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="gender">Gender 🧑</label>
-                    <div className="input-wrapper plain">
-                      <select
-                        id="gender"
-                        name="gender"
-                        value={formData.gender}
-                        onChange={handleChange}
-                        required
-                      >
-                        <option value="">Select gender</option>
-                        <option value="female">Female</option>
-                        <option value="male">Male</option>
-                        <option value="other">Other</option>
-                        <option value="prefer-not">Prefer not to say</option>
-                      </select>
+              {step === 2 && (
+                <div className="details-grid">
+                  {formData.role !== 'admin' && (
+                    <div className="form-group">
+                      <label htmlFor="phoneNumber">Phone Number 📞</label>
+                      <div className="input-wrapper plain">
+                        <input
+                          type="tel"
+                          id="phoneNumber"
+                          name="phoneNumber"
+                          value={formData.phoneNumber}
+                          onChange={handleChange}
+                          placeholder="Enter phone number"
+                          required
+                        />
+                      </div>
                     </div>
-                  </div>
+                  )}
+
+                  {formData.role === 'patient' ? (
+                    <>
+                      <div className="form-group">
+                        <label htmlFor="gender">Gender 🧑</label>
+                        <div className="input-wrapper plain">
+                          <select
+                            id="gender"
+                            name="gender"
+                            value={formData.gender}
+                            onChange={handleChange}
+                            required
+                          >
+                            <option value="">Select gender</option>
+                            <option value="female">Female</option>
+                            <option value="male">Male</option>
+                            <option value="other">Other</option>
+                            <option value="prefer-not">Prefer not to say</option>
+                          </select>
+                        </div>
+                      </div>
 
                   <div className="form-group">
                     <label htmlFor="bloodGroup">Blood Group 🩸</label>
@@ -436,22 +439,22 @@ const Signup = () => {
                     </div>
                   </div>
                 </>
-              ) : formData.role === 'doctor' ? (
-                <>
-                  <div className="form-group">
-                    <label htmlFor="specialization">Specialization 🩺</label>
-                    <div className="input-wrapper plain">
-                      <input
-                        type="text"
-                        id="specialization"
-                        name="specialization"
-                        value={formData.specialization}
-                        onChange={handleChange}
-                        placeholder="Cardiologist, Dentist, etc."
-                        required
-                      />
-                    </div>
-                  </div>
+                  ) : formData.role === 'doctor' ? (
+                    <>
+                      <div className="form-group">
+                        <label htmlFor="specialization">Specialization 🩺</label>
+                        <div className="input-wrapper plain">
+                          <input
+                            type="text"
+                            id="specialization"
+                            name="specialization"
+                            value={formData.specialization}
+                            onChange={handleChange}
+                            placeholder="Cardiologist, Dentist, etc."
+                            required
+                          />
+                        </div>
+                      </div>
 
                   <div className="form-group">
                     <label htmlFor="experienceYears">Experience (Years) 🕒</label>
@@ -548,39 +551,41 @@ const Signup = () => {
                     </div>
                   </div>
                 </>
-              ) : (
-                <>
-                  <div className="form-group full-width">
-                    <label htmlFor="hospitalName">Hospital Name 🏥</label>
-                    <div className="input-wrapper plain">
-                      <input
-                        type="text"
-                        id="hospitalName"
-                        name="hospitalName"
-                        value={formData.hospitalName}
-                        onChange={handleChange}
-                        placeholder="Enter hospital name"
-                        required
-                      />
-                    </div>
-                  </div>
-                </>
+                  ) : (
+                    <>
+                      <div className="form-group full-width">
+                        <label htmlFor="hospitalName">Hospital Name 🏥</label>
+                        <div className="input-wrapper plain">
+                          <input
+                            type="text"
+                            id="hospitalName"
+                            name="hospitalName"
+                            value={formData.hospitalName}
+                            onChange={handleChange}
+                            placeholder="Enter hospital name"
+                            required
+                          />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          <div className="form-actions">
-            {step === 2 && (
-              <button type="button" className="secondary-btn" onClick={handleBack}>
-                Back
-              </button>
-            )}
-            <button type="submit" className="signup-btn">
-              <span>{step === 1 ? 'Next' : 'Create Account'}</span>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+              <div className="form-actions">
+                {step === 2 && (
+                  <button type="button" className="secondary-btn" onClick={handleBack}>
+                    Back
+                  </button>
+                )}
+                <button type="submit" className="signup-btn">
+                  <span>{step === 1 ? 'Next' : 'Create Account'}</span>
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </form>
 

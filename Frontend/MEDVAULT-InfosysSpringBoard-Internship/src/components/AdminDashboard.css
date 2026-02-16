@@ -321,6 +321,83 @@
   padding: 1.5rem;
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-md);
+
+/* ============================================
+   MEDICAL PROFESSIONAL POLISH (OVERRIDES)
+   ============================================ */
+
+.dashboard-container {
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.04), rgba(0, 184, 169, 0.03)),
+    var(--bg-primary);
+}
+
+.dashboard-header {
+  background: rgba(255, 255, 255, 0.9);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="dark"] .dashboard-header {
+  background: rgba(22, 25, 31, 0.92);
+}
+
+.dashboard-sidebar {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md);
+}
+
+.sidebar-item {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-light);
+}
+
+.sidebar-item.active,
+.sidebar-item:hover {
+  background: var(--bg-hover);
+  border-color: rgba(0, 102, 204, 0.2);
+}
+
+.dashboard-card,
+.summary-card,
+.stat-item {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-card:hover,
+.summary-card:hover,
+.stat-item:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.card-icon,
+.summary-icon,
+.stat-icon {
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.12), rgba(0, 184, 169, 0.12));
+  color: var(--primary);
+  border: 1px solid rgba(0, 102, 204, 0.15);
+}
+
+.card-badge {
+  background: rgba(0, 102, 204, 0.12);
+  color: var(--primary);
+  border: 1px solid rgba(0, 102, 204, 0.15);
+}
+
+.section-title {
+  color: var(--text-primary);
+}
+
+.section-subtitle,
+.card-description,
+.summary-meta,
+.stat-label {
+  color: var(--text-secondary);
+}
   overflow: hidden;
   transition: all var(--transition-normal);
   animation: cardFloatIn 0.6s ease both;

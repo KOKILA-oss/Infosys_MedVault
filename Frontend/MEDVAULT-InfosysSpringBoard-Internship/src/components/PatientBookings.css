@@ -100,7 +100,7 @@
   padding: 1.25rem 1.5rem;
   background: var(--bg-card);
   display: grid;
-  grid-template-columns: 1.4fr 1fr 1fr;
+  grid-template-columns: 1.4fr 1fr auto 1fr;
   gap: 1rem;
   align-items: center;
 }
@@ -120,6 +120,11 @@
   gap: 0.35rem;
   color: var(--text-secondary);
   font-size: var(--text-sm);
+}
+
+.appointment-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .status-pill {

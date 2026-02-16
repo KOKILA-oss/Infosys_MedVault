@@ -189,6 +189,9 @@ const DoctorBookings = () => {
           <button className="ghost-btn" onClick={() => navigate('/doctor-dashboard')}>
             Back to Dashboard
           </button>
+          <button className="ghost-btn" onClick={() => navigate('/doctor-appointments')}>
+            View All
+          </button>
           <button className="primary-btn" onClick={() => handleTabChange('pending')}>
             Pending Requests
           </button>
@@ -297,6 +300,13 @@ const DoctorBookings = () => {
                       <button className="primary-btn" onClick={() => handleApprove(item.id)}>
                         Approve
                       </button>
+                      <button
+                        className="ghost-btn"
+                        type="button"
+                        onClick={() => navigate(`/doctor-reschedule/${item.id}`)}
+                      >
+                        Reschedule
+                      </button>
                       <button className="danger-btn" onClick={() => handleRejectToggle(item.id)}>
                         {rejectOpen[item.id] ? 'Confirm Reject' : 'Reject'}
                       </button>
@@ -337,6 +347,15 @@ const DoctorBookings = () => {
                   <div className="appointment-note">
                     <span>Concern</span>
                     <p>{item.concern}</p>
+                  </div>
+                  <div className="appointment-actions">
+                    <button
+                      className="ghost-btn"
+                      type="button"
+                      onClick={() => navigate(`/doctor-reschedule/${item.id}`)}
+                    >
+                      Reschedule
+                    </button>
                   </div>
                 </div>
               ))}
@@ -395,6 +414,15 @@ const DoctorBookings = () => {
                     {item.status === 'rejected' && item.rejectionReason && (
                       <p className="rejection-text">Reason: {item.rejectionReason}</p>
                     )}
+                  </div>
+                  <div className="appointment-actions">
+                    <button
+                      className="ghost-btn"
+                      type="button"
+                      onClick={() => navigate(`/doctor-reschedule/${item.id}`)}
+                    >
+                      Reschedule
+                    </button>
                   </div>
                 </div>
               ))}

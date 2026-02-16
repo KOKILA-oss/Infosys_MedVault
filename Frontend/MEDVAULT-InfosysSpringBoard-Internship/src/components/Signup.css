@@ -10,7 +10,7 @@
   justify-content: center;
   position: relative;
   overflow: hidden;
-  padding: 2rem;
+  padding: 1.5rem 2vw;
   background: var(--bg-primary);
 }
 
@@ -22,7 +22,7 @@
   border-radius: 24px;
   padding: 3rem 2.5rem;
   width: 100%;
-  max-width: 820px;
+  max-width: 100%;
   box-shadow: var(--shadow-3d);
   border: 1px solid var(--border-light);
   
@@ -94,9 +94,9 @@
 }
 
 .role-options {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
 }
 
 /* 3D Role Cards */
@@ -106,7 +106,7 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 1.5rem 1rem;
+  padding: 1.25rem 1rem;
   background: var(--bg-secondary);
   border: 2px solid var(--border);
   border-radius: 16px;
@@ -168,11 +168,30 @@
   gap: 1.25rem;
 }
 
+.signup-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 2rem;
+  align-items: start;
+}
+
+.signup-side {
+  position: sticky;
+  top: 2rem;
+  align-self: start;
+}
+
+.signup-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 /* Stepper */
 .form-stepper {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 1rem;
   margin-bottom: 1.5rem;
 }
@@ -305,6 +324,12 @@
   gap: 1.25rem;
 }
 
+@media (min-width: 1200px) {
+  .details-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
 .details-grid .full-width {
   grid-column: 1 / -1;
 }
@@ -313,6 +338,16 @@
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.form-actions .signup-btn {
+  margin-top: 0;
+  flex: 1;
+  min-height: 56px;
+}
+
+.form-actions .secondary-btn {
+  min-height: 56px;
 }
 
 .secondary-btn {
@@ -340,15 +375,6 @@
 .signup-btn {
   margin-top: 1rem;
   padding: 1rem 2rem;
-  .form-actions .signup-btn {
-    margin-top: 0;
-    flex: 1;
-    min-height: 56px;
-  }
-
-  .form-actions .secondary-btn {
-    min-height: 56px;
-  }
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   color: white;
   font-size: var(--text-base);
@@ -431,10 +457,115 @@
   text-decoration: underline;
 }
 
+/* ============================================
+   MEDICAL PROFESSIONAL POLISH (OVERRIDES)
+   ============================================ */
+
+.signup-container {
+  background: linear-gradient(135deg, rgba(0, 102, 204, 0.05), rgba(0, 184, 169, 0.04)),
+    var(--bg-primary);
+}
+
+.medical-bg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pulse-circle {
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 102, 204, 0.18), transparent 65%);
+  animation: pulseGlow 6s ease-in-out infinite;
+}
+
+.pulse-circle:nth-child(1) {
+  top: -120px;
+  right: -80px;
+}
+
+.pulse-circle:nth-child(2) {
+  bottom: -140px;
+  left: -80px;
+  animation-delay: 1.5s;
+}
+
+.signup-card {
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-lg);
+}
+
+[data-theme="dark"] .signup-card {
+  background: rgba(22, 25, 31, 0.95);
+}
+
+.role-card {
+  border-radius: 18px;
+}
+
+.role-card.active {
+  box-shadow: var(--shadow-md);
+}
+
+.input-wrapper input,
+.input-wrapper select {
+  background: var(--bg-secondary);
+  border-color: var(--border-light);
+}
+
+.input-wrapper input:focus,
+.input-wrapper select:focus {
+  background: var(--bg-card);
+  box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.12);
+}
+
+.secondary-btn {
+  background: var(--bg-secondary);
+  border-color: var(--border-light);
+}
+
+.signup-btn {
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  box-shadow: var(--shadow-md);
+}
+
+.signup-btn:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+@keyframes pulseGlow {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  50% {
+    transform: scale(1.08);
+    opacity: 0.45;
+  }
+}
+
 /* Responsive Design */
 @media (max-width: 900px) {
+  .signup-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .signup-side {
+    position: static;
+  }
+
   .role-options {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .role-card {
+    flex: 1 1 200px;
   }
 }
 
@@ -449,7 +580,7 @@
   
   .role-options {
     gap: 0.75rem;
-    grid-template-columns: 1fr;
+    flex-direction: column;
   }
   
   .role-card {

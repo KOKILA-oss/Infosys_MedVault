@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './DoctorDashboard.css';
 
 const APPOINTMENTS_KEY = 'patientAppointments';
+const NOTIFICATIONS_KEY = 'doctorNotifications';
 
 const formatTimeLabel = (timeValue) => {
   const [hours, minutes] = timeValue.split(':');
@@ -31,6 +32,7 @@ const DoctorDashboard = () => {
   const [userName] = useState('Dr. Asha Sharma');
   const [showStats, setShowStats] = useState(true);
   const [todayAppointments, setTodayAppointments] = useState([]);
+  const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -90,6 +92,13 @@ const DoctorDashboard = () => {
     setTodayAppointments(sample);
   }, []);
 
+  useEffect(() => {
+    const notificationsData = localStorage.getItem(NOTIFICATIONS_KEY);
+    const notifications = notificationsData ? JSON.parse(notificationsData) : [];
+    const unread = notifications.filter(n => !n.read).length;
+    setUnreadCount(unread);
+  }, []);
+
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
@@ -98,7 +107,7 @@ const DoctorDashboard = () => {
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    navigate('/');
   };
 
   const handleProfileClick = () => {
@@ -128,10 +137,10 @@ const DoctorDashboard = () => {
     },
     {
       id: 1,
-      title: 'Patients',
+      title: 'Patient Registry',
       icon: '👥',
       color: '#0066cc',
-      link: '#patients'
+      link: '/doctor-patients'
     },
     {
       id: 2,
@@ -145,28 +154,28 @@ const DoctorDashboard = () => {
       title: 'Schedule',
       icon: '🗓️',
       color: '#9b59b6',
-      link: '#schedule'
+      link: '/doctor-today-schedule'
     },
     {
       id: 4,
       title: 'Analytics',
       icon: '📈',
       color: '#f39c12',
-      link: '#analytics'
+      link: '/doctor-analytics'
     },
     {
       id: 5,
       title: 'Reports',
       icon: '📄',
       color: '#4f46e5',
-      link: '#reports'
+      link: '/doctor-reports'
     },
     {
       id: 6,
-      title: 'Settings',
-      icon: '⚙️',
-      color: '#34495e',
-      link: '#settings'
+      title: 'Notifications',
+      icon: '🔔',
+      color: '#e74c3c',
+      link: '/doctor-notifications'
     }
   ];
 
@@ -213,11 +222,17 @@ const DoctorDashboard = () => {
                   <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
                 </svg>
               </button>
-              <button className="notification-btn" title="Notifications" aria-label="Notifications">
+              <button 
+                className="notification-btn" 
+                title="Notifications" 
+                aria-label="Notifications"
+                onClick={() => navigate('/doctor-notifications')}
+              >
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M18 8A6 6 0 0 0 6 8C6 14 4 16 4 16H20C20 16 18 14 18 8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                   <path d="M13.73 21A2 2 0 0 1 10.27 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
+                {unreadCount > 0 && <span className="notification-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>}
               </button>
               <button onClick={handleLogout} className="logout-btn" title="Logout">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">

@@ -177,6 +177,9 @@ const PatientBookings = () => {
           <button className="ghost-btn" onClick={() => navigate('/patient-dashboard')}>
             Back to Dashboard
           </button>
+          <button className="ghost-btn" onClick={() => navigate('/patient-appointments')}>
+            View All
+          </button>
           <button className="primary-btn" onClick={() => handleTabChange('book')}>
             Book Appointment
           </button>
@@ -222,6 +225,15 @@ const PatientBookings = () => {
                     <span>{formatDateLabel(item.date)}</span>
                     <span>{formatTimeLabel(item.time)}</span>
                     <span className={`status-pill ${item.status}`}>{item.status}</span>
+                  </div>
+                  <div className="appointment-actions">
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => navigate(`/patient-reschedule/${item.id}`)}
+                    >
+                      Reschedule
+                    </button>
                   </div>
                   <div className="appointment-note">
                     <span>Concern</span>

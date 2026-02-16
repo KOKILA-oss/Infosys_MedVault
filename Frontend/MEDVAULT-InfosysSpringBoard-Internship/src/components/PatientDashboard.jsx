@@ -18,18 +18,18 @@ const PatientDashboard = () => {
     // Check for saved theme preference
     const savedTheme = localStorage.getItem('theme') || 'light';
     setTheme(savedTheme);
-    document.documentElement.setAttribute('data-theme', savedTheme);
+    document.documentElement.dataset.theme = savedTheme;
   }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
-    document.documentElement.setAttribute('data-theme', newTheme);
+    document.documentElement.dataset.theme = newTheme;
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    navigate('/');
   };
 
   const handleProfileClick = () => {
@@ -37,14 +37,14 @@ const PatientDashboard = () => {
   };
 
   const handleNavClick = (event, link) => {
-    if (link && link.startsWith('/')) {
+    if (link?.startsWith('/')) {
       event.preventDefault();
       navigate(link);
     }
   };
 
   const handleCardAction = (link) => {
-    if (link && link.startsWith('/')) {
+    if (link?.startsWith('/')) {
       navigate(link);
     }
   };
