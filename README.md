@@ -331,7 +331,7 @@ Each component has:
 
 ## 📄 License
 
-This project is created for educational purposes.
+This project is created for educational purposes as part of the internship.
 
 ---
 
