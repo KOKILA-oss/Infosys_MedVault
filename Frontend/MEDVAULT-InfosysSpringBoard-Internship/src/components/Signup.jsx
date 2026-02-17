@@ -8,6 +8,9 @@ const Signup = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState('light');
   const [step, setStep] = useState(1);
+  const [isSendingOtp, setIsSendingOtp] = useState(false);
+  const [otpStatusMessage, setOtpStatusMessage] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   const [formData, setFormData] = useState({
     username: '',
     email: '',
@@ -54,9 +57,11 @@ const Signup = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setErrorMessage('');
+    setOtpStatusMessage('');
 
     if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match");
+      setErrorMessage('Passwords do not match.');
       return;
     }
 
@@ -70,9 +75,14 @@ const Signup = () => {
     }
 
     try {
+      setIsSendingOtp(true);
+      setOtpStatusMessage('OTP sending...');
+
       await axios.post("/api/auth/register/request-otp", {
         email: formData.email
       });
+
+      setOtpStatusMessage('OTP sent. Redirecting to verification...');
 
       // Navigate to OTP page and pass entire form data
       navigate('/otp-verify', {
@@ -82,7 +92,11 @@ const Signup = () => {
         }
       });
     } catch (error) {
+      setOtpStatusMessage('');
+      setErrorMessage(error?.response?.data || 'Unable to send OTP. Please try again.');
       console.error("OTP request failed:", error);
+    } finally {
+      setIsSendingOtp(false);
     }
   };
 
@@ -134,62 +148,65 @@ const Signup = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="signup-form" noValidate>
-          <div className="form-stepper">
-            <div className={`step-item ${step === 1 ? 'active' : 'complete'}`}>
-              <span className="step-badge">1</span>
-              <span className="step-label">Basic Info</span>
-            </div>
-            <div className={`step-line ${step === 2 ? 'active' : ''}`}></div>
-            <div className={`step-item ${step === 2 ? 'active' : ''}`}>
-              <span className="step-badge">2</span>
-              <span className="step-label">Details</span>
-            </div>
-          </div>
+          <div className="signup-layout">
+            <aside className="signup-role-column">
+              <div className="role-selection">
+                <label className="role-label">I am a:</label>
+                <div className="role-options">
+                  <label className={`role-card ${formData.role === 'patient' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="patient"
+                      checked={formData.role === 'patient'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">👤</div>
+                    <span className="role-name">Patient</span>
+                  </label>
 
-          {/* Role Selection */}
-          <div className="role-selection">
-            <label className="role-label">I am a:</label>
-            <div className="role-options">
-              <label className={`role-card ${formData.role === 'patient' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="patient"
-                  checked={formData.role === 'patient'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">👤</div>
-                <span className="role-name">Patient</span>
-              </label>
-              
-              <label className={`role-card ${formData.role === 'doctor' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="doctor"
-                  checked={formData.role === 'doctor'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">⚕️</div>
-                <span className="role-name">Doctor</span>
-              </label>
+                  <label className={`role-card ${formData.role === 'doctor' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="doctor"
+                      checked={formData.role === 'doctor'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">⚕️</div>
+                    <span className="role-name">Doctor</span>
+                  </label>
 
-              <label className={`role-card ${formData.role === 'admin' ? 'active' : ''}`}>
-                <input
-                  type="radio"
-                  name="role"
-                  value="admin"
-                  checked={formData.role === 'admin'}
-                  onChange={handleChange}
-                />
-                <div className="role-icon">🛡️</div>
-                <span className="role-name">Admin</span>
-              </label>
-            </div>
-          </div>
+                  <label className={`role-card ${formData.role === 'admin' ? 'active' : ''}`}>
+                    <input
+                      type="radio"
+                      name="role"
+                      value="admin"
+                      checked={formData.role === 'admin'}
+                      onChange={handleChange}
+                    />
+                    <div className="role-icon">🛡️</div>
+                    <span className="role-name">Admin</span>
+                  </label>
+                </div>
+              </div>
+            </aside>
 
-          {step === 1 && (
-            <>
+            <section className="signup-main-column">
+              <div className="form-stepper">
+                <div className={`step-item ${step === 1 ? 'active' : 'complete'}`}>
+                  <span className="step-badge">1</span>
+                  <span className="step-label">Basic Info</span>
+                </div>
+                <div className={`step-line ${step === 2 ? 'active' : ''}`}></div>
+                <div className={`step-item ${step === 2 ? 'active' : ''}`}>
+                  <span className="step-badge">2</span>
+                  <span className="step-label">Details</span>
+                </div>
+              </div>
+
+              {step === 1 && (
+                <div className="details-grid basic-grid">
               <div className="form-group">
                 <label htmlFor="username">
                   {formData.role === 'admin' ? 'Admin Root Username' : 'Username'}
@@ -277,13 +294,13 @@ const Signup = () => {
                   />
                 </div>
               </div>
-            </>
-          )}
+                </div>
+              )}
 
-          {step === 2 && (
-            <div className="details-grid">
-              {formData.role !== 'admin' && (
-                <div className="form-group">
+              {step === 2 && (
+                <div className="details-grid">
+                  {formData.role !== 'admin' && (
+                    <div className="form-group">
                   <label htmlFor="phoneNumber">Phone Number 📞</label>
                   <div className="input-wrapper plain">
                     <input
@@ -296,11 +313,11 @@ const Signup = () => {
                       required
                     />
                   </div>
-                </div>
-              )}
+                    </div>
+                  )}
 
-              {formData.role === 'patient' ? (
-                <>
+                  {formData.role === 'patient' ? (
+                    <>
                   <div className="form-group">
                     <label htmlFor="gender">Gender 🧑</label>
                     <div className="input-wrapper plain">
@@ -435,9 +452,9 @@ const Signup = () => {
                       />
                     </div>
                   </div>
-                </>
-              ) : formData.role === 'doctor' ? (
-                <>
+                    </>
+                  ) : formData.role === 'doctor' ? (
+                    <>
                   <div className="form-group">
                     <label htmlFor="specialization">Specialization 🩺</label>
                     <div className="input-wrapper plain">
@@ -547,40 +564,43 @@ const Signup = () => {
                       />
                     </div>
                   </div>
-                </>
-              ) : (
-                <>
-                  <div className="form-group full-width">
-                    <label htmlFor="hospitalName">Hospital Name 🏥</label>
-                    <div className="input-wrapper plain">
-                      <input
-                        type="text"
-                        id="hospitalName"
-                        name="hospitalName"
-                        value={formData.hospitalName}
-                        onChange={handleChange}
-                        placeholder="Enter hospital name"
-                        required
-                      />
+                    </>
+                  ) : (
+                    <div className="form-group full-width">
+                      <label htmlFor="hospitalName">Hospital Name 🏥</label>
+                      <div className="input-wrapper plain">
+                        <input
+                          type="text"
+                          id="hospitalName"
+                          name="hospitalName"
+                          value={formData.hospitalName}
+                          onChange={handleChange}
+                          placeholder="Enter hospital name"
+                          required
+                        />
+                      </div>
                     </div>
-                  </div>
-                </>
+                  )}
+                </div>
               )}
-            </div>
-          )}
 
-          <div className="form-actions">
-            {step === 2 && (
-              <button type="button" className="secondary-btn" onClick={handleBack}>
-                Back
-              </button>
-            )}
-            <button type="submit" className="signup-btn">
-              <span>{step === 1 ? 'Next' : 'Create Account'}</span>
-              <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </button>
+              <div className="form-actions">
+                {step === 2 && (
+                  <button type="button" className="secondary-btn" onClick={handleBack} disabled={isSendingOtp}>
+                    Back
+                  </button>
+                )}
+                <button type="submit" className="signup-btn" disabled={isSendingOtp}>
+                  <span>{step === 1 ? 'Next' : (isSendingOtp ? 'OTP sending...' : 'Create Account')}</span>
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 12H19M19 12L12 5M19 12L12 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                </button>
+              </div>
+
+              {otpStatusMessage && <p className="otp-status">{otpStatusMessage}</p>}
+              {errorMessage && <p className="auth-error">{errorMessage}</p>}
+            </section>
           </div>
         </form>
 

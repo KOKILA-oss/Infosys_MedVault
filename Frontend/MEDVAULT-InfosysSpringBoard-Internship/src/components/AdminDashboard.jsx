@@ -22,7 +22,7 @@ const AdminDashboard = () => {
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    navigate('/');
   };
 
   const handleProfileClick = () => {

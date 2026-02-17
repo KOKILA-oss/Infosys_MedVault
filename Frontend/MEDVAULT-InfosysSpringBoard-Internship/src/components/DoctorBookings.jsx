@@ -93,7 +93,7 @@ const DoctorBookings = () => {
         let dateTime = null;
         if (item.appointmentDate && item.appointmentTime) {
           const temp = new Date(`${item.appointmentDate}T${item.appointmentTime}`);
-          if (!isNaN(temp)) dateTime = temp;
+          if (!Number.isNaN(temp.getTime())) dateTime = temp;
         }
         return { ...item, dateTime };
       })
@@ -169,8 +169,17 @@ const DoctorBookings = () => {
           <h1>Appointment Management</h1>
           <p>Review, approve, and schedule patient appointments.</p>
         </div>
-        <div>
-          <button onClick={() => navigate("/doctor-dashboard")}>
+        <div className="bookings-header-actions">
+          <button className="ghost-btn" onClick={() => navigate('/doctor-patient-registry')}>
+            Patient Registry
+          </button>
+          <button className="ghost-btn" onClick={() => navigate('/doctor-appointments/all')}>
+            View All Appointments
+          </button>
+          <button className="primary-btn" onClick={() => navigate('/doctor-appointments/reschedule')}>
+            Reschedule Appointment
+          </button>
+          <button className="ghost-btn" onClick={() => navigate("/doctor-dashboard")}>
             Back to Dashboard
           </button>
         </div>

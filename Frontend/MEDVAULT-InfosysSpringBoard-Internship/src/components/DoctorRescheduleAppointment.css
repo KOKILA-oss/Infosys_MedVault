@@ -1,0 +1,137 @@
+.doctor-reschedule-page {
+  width: 100%;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 3rem;
+}
+
+.reschedule-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.reschedule-header h1 {
+  font-size: var(--text-3xl);
+  margin-bottom: 0.35rem;
+}
+
+.reschedule-header p {
+  color: var(--text-secondary);
+}
+
+.reschedule-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  box-shadow: var(--shadow-sm);
+  padding: 1rem;
+  display: grid;
+  grid-template-columns: 1.4fr 1fr;
+  gap: 1rem;
+}
+
+.reschedule-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.9rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.form-group label {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  padding: 0.75rem 0.9rem;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.1);
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 0.75rem;
+}
+
+.feedback-text {
+  grid-column: 1 / -1;
+  color: var(--primary);
+  font-size: var(--text-sm);
+}
+
+.ghost-btn,
+.primary-btn {
+  padding: 0.55rem 1.1rem;
+  border-radius: 12px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  border: 1px solid var(--border);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.primary-btn {
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border-color: transparent;
+  color: white;
+}
+
+.ghost-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.appointment-preview {
+  border: 1px solid var(--border-light);
+  border-radius: 16px;
+  padding: 1rem;
+  background: var(--bg-secondary);
+  align-self: start;
+}
+
+.appointment-preview h3 {
+  margin-bottom: 0.55rem;
+}
+
+.appointment-preview p {
+  margin-bottom: 0.35rem;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 980px) {
+  .reschedule-header {
+    flex-direction: column;
+  }
+
+  .reschedule-card,
+  .reschedule-form {
+    grid-template-columns: 1fr;
+  }
+}

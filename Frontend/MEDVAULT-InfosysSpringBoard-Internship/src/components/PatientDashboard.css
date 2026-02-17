@@ -1098,3 +1098,187 @@
     font-size: 1.75rem;
   }
 }
+
+/* ============================================
+   MEDICAL PROFESSIONAL UI OVERRIDES
+   ============================================ */
+
+.dashboard-container {
+  background: linear-gradient(180deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
+}
+
+.dashboard-header {
+  border-bottom: 1px solid var(--border-light);
+  box-shadow: var(--shadow-md);
+}
+
+.logo-icon-small,
+.user-avatar,
+.sidebar-icon,
+.card-icon,
+.summary-icon,
+.stat-icon {
+  border: 1px solid var(--border-light);
+}
+
+.dashboard-sidebar {
+  border-left: 1px solid var(--border-light);
+  border-radius: 18px;
+}
+
+.sidebar-item,
+.dashboard-card,
+.summary-card,
+.appointment-card,
+.report-item,
+.patient-card,
+.settings-card,
+.stat-item {
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+}
+
+.sidebar-item:hover,
+.dashboard-card:hover,
+.summary-card:hover,
+.appointment-card:hover,
+.report-item:hover,
+.patient-card:hover,
+.settings-card:hover,
+.stat-item:hover {
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-md);
+}
+
+.dashboard-welcome,
+.health-stats,
+.dashboard-section {
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+  border: 1px solid var(--border-light);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
+}
+
+.welcome-title,
+.section-title {
+  letter-spacing: 0.01em;
+}
+
+.welcome-subtitle,
+.section-subtitle,
+.card-description,
+.summary-meta,
+.appointment-details p,
+.report-details p {
+  color: var(--text-secondary);
+}
+
+.status-badge,
+.card-badge,
+.appointment-flag {
+  border: 1px solid var(--border);
+}
+
+.card-action,
+.action-btn,
+.export-btn,
+.add-btn,
+.view-all-btn,
+.theme-toggle,
+.notification-btn,
+.logout-btn {
+  border-width: 2px;
+}
+
+.card-action:focus-visible,
+.action-btn:focus-visible,
+.export-btn:focus-visible,
+.add-btn:focus-visible,
+.view-all-btn:focus-visible,
+.theme-toggle:focus-visible,
+.notification-btn:focus-visible,
+.logout-btn:focus-visible,
+.sidebar-item:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   TEXT FIT & EXTRA PADDING FIX
+   ============================================ */
+
+.dashboard-card,
+.summary-card,
+.appointment-card,
+.report-item,
+.patient-card,
+.settings-card,
+.stat-item,
+.dashboard-section,
+.health-stats {
+  padding: clamp(1.15rem, 1.6vw, 1.75rem);
+}
+
+.dashboard-card,
+.summary-card,
+.appointment-card,
+.report-item,
+.patient-card,
+.settings-card,
+.stat-item,
+.card-body,
+.appointment-details,
+.report-details,
+.patient-info,
+.summary-info {
+  min-width: 0;
+}
+
+.card-header,
+.card-footer,
+.appointment-main,
+.report-main,
+.patient-main,
+.summary-card {
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.card-title,
+.card-description,
+.summary-label,
+.summary-value,
+.summary-meta,
+.stat-label,
+.stat-value,
+.appointment-details h3,
+.appointment-details p,
+.report-details h3,
+.report-details p,
+.patient-info h3,
+.patient-info p,
+.welcome-title,
+.welcome-subtitle,
+.section-title,
+.section-subtitle {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Welcome banner text fit */
+.dashboard-welcome {
+  padding: clamp(1.2rem, 1.9vw, 1.8rem);
+  overflow: hidden;
+}
+
+.welcome-title {
+  font-size: clamp(1.35rem, 2.2vw, 1.9rem);
+  line-height: 1.25;
+  margin-bottom: 0.35rem;
+}
+
+.welcome-subtitle {
+  font-size: clamp(0.92rem, 1.15vw, 1rem);
+  line-height: 1.5;
+  max-width: 72ch;
+}

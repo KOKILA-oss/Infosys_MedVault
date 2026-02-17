@@ -129,7 +129,7 @@ const DoctorDashboard = () => {
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    navigate('/');
   };
 
   const handleProfileClick = () => {
@@ -162,7 +162,7 @@ const DoctorDashboard = () => {
       title: 'Patients',
       icon: '👥',
       color: '#0066cc',
-      link: '#patients'
+      link: '/doctor-patient-registry'
     },
     {
       id: 2,

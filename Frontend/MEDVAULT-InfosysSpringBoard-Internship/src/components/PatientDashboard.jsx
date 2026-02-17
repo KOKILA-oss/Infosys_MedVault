@@ -80,7 +80,7 @@ const PatientDashboard = () => {
   };
 
   const handleLogout = () => {
-    navigate('/login');
+    navigate('/');
   };
 
   const handleProfileClick = () => {
@@ -179,6 +179,13 @@ const PatientDashboard = () => {
     },
     {
       id: 5,
+      title: 'Ratings & Reviews',
+      icon: '⭐',
+      color: '#f39c12',
+      link: '/patient-ratings-reviews'
+    },
+    {
+      id: 6,
       title: 'Settings',
       icon: '⚙️',
       color: '#34495e',
