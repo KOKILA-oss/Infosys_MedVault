@@ -78,8 +78,15 @@
   border: 1px solid var(--border-light);
   border-radius: 18px;
   padding: 1.25rem 1.5rem;
-  background: var(--bg-card);
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
   box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.analytics-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-md);
 }
 
 .analytics-card span {
@@ -105,6 +112,11 @@
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 1.15rem;
+  box-shadow: var(--shadow-sm);
 }
 
 .bookings-section h2 {
@@ -134,11 +146,19 @@
   border: 1px solid var(--border-light);
   border-radius: 18px;
   padding: 1.25rem 1.5rem;
-  background: var(--bg-card);
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
   display: grid;
   gap: 1rem;
   box-shadow: var(--shadow-sm);
   text-align: left;
+  transition: all var(--transition-normal);
+}
+
+.appointment-row:hover,
+.appointment-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary-light);
+  box-shadow: var(--shadow-md);
 }
 
 .pending-card {
@@ -221,19 +241,22 @@
   font-weight: var(--weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  background: rgba(46, 204, 113, 0.15);
-  color: #1e824c;
+  background: color-mix(in srgb, var(--success) 18%, var(--bg-card));
+  color: var(--success);
+  border: 1px solid color-mix(in srgb, var(--success) 35%, var(--border-light));
   width: fit-content;
 }
 
 .status-pill.pending {
-  background: rgba(243, 156, 18, 0.18);
-  color: #b9770e;
+  background: color-mix(in srgb, var(--warning) 18%, var(--bg-card));
+  color: var(--warning);
+  border-color: color-mix(in srgb, var(--warning) 35%, var(--border-light));
 }
 
 .status-pill.rejected {
-  background: rgba(231, 76, 60, 0.15);
-  color: #c0392b;
+  background: color-mix(in srgb, var(--error) 16%, var(--bg-card));
+  color: var(--error);
+  border-color: color-mix(in srgb, var(--error) 35%, var(--border-light));
 }
 
 .appointment-note span {
@@ -267,7 +290,7 @@
   padding: 0.85rem 1rem;
   border-radius: 14px;
   border: 1px dashed var(--border);
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
 }
 
 .appointment-actions label {
@@ -284,6 +307,9 @@
   background: var(--bg-secondary);
   color: var(--text-primary);
   font-size: var(--text-sm);
+  min-height: 110px;
+  resize: vertical;
+  line-height: 1.5;
   transition: all var(--transition-normal);
 }
 
@@ -358,6 +384,7 @@
   background: linear-gradient(135deg, var(--primary), var(--primary-dark));
   border-color: transparent;
   color: white;
+  box-shadow: var(--shadow-sm);
 }
 
 .danger-btn {
@@ -373,6 +400,168 @@
 .ghost-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
+}
+
+.primary-btn:hover,
+.danger-btn:hover {
+  transform: translateY(-1px);
+}
+
+/* Additional doctor appointment page polish */
+.bookings-header {
+  background: linear-gradient(135deg, var(--bg-card), var(--bg-secondary));
+  border: 1px solid var(--border-light);
+  border-radius: 20px;
+  padding: 1.1rem 1.2rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.tab-btn:hover {
+  color: var(--primary);
+  background: color-mix(in srgb, var(--bg-card) 70%, transparent);
+}
+
+.tab-btn:focus-visible,
+.ghost-btn:focus-visible,
+.primary-btn:focus-visible,
+.danger-btn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.feedback {
+  border: 1px solid color-mix(in srgb, var(--primary) 35%, var(--border-light));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg-card));
+  color: var(--primary-dark);
+  padding: 0.7rem 0.9rem;
+  width: fit-content;
+  max-width: 100%;
+}
+
+.action-buttons {
+  flex-wrap: wrap;
+}
+
+.bookings-header-actions .ghost-btn,
+.bookings-header-actions .primary-btn,
+.appointment-actions .ghost-btn,
+.appointment-actions .primary-btn,
+.appointment-actions .danger-btn {
+  min-height: 40px;
+}
+
+.appointment-main p,
+.appointment-note p,
+.rejection-text {
+  overflow-wrap: anywhere;
+}
+
+/* Tabs + summary counters enhancement */
+.booking-tabs {
+  background: linear-gradient(135deg, var(--bg-secondary), var(--bg-card));
+  padding: 0.5rem;
+}
+
+.booking-tabs .tab-btn {
+  position: relative;
+  min-height: 44px;
+}
+
+.booking-tabs .tab-btn:nth-child(1) {
+  color: var(--warning);
+}
+
+.booking-tabs .tab-btn:nth-child(2) {
+  color: var(--success);
+}
+
+.booking-tabs .tab-btn:nth-child(3) {
+  color: var(--text-primary);
+}
+
+.booking-tabs .tab-btn.active {
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-md);
+}
+
+.booking-tabs .tab-btn.active::after {
+  content: '';
+  position: absolute;
+  left: 20%;
+  right: 20%;
+  bottom: 0.28rem;
+  height: 2px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.analytics-card {
+  position: relative;
+  overflow: hidden;
+  min-height: 128px;
+}
+
+.analytics-card span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  padding: 0.18rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+}
+
+.analytics-card span::after {
+  content: ':';
+}
+
+.analytics-card h3 {
+  font-size: clamp(1.35rem, 2.1vw, 1.8rem);
+  line-height: 1.25;
+}
+
+.analytics-card:nth-child(1) {
+  border-color: color-mix(in srgb, var(--success) 40%, var(--border-light));
+}
+
+.analytics-card:nth-child(2) {
+  border-color: color-mix(in srgb, var(--warning) 40%, var(--border-light));
+}
+
+.analytics-card:nth-child(3) {
+  border-color: color-mix(in srgb, var(--error) 40%, var(--border-light));
+}
+
+.analytics-card:nth-child(4) {
+  border-color: color-mix(in srgb, var(--primary) 40%, var(--border-light));
+}
+
+/* Alignment pattern (same as all-appointments page) */
+.bookings-header,
+.booking-tabs,
+.analytics-strip,
+.bookings-section {
+  max-width: 1400px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.bookings-header {
+  margin-bottom: 2rem;
+}
+
+.booking-tabs,
+.analytics-strip {
+  width: 100%;
+}
+
+.booking-tabs {
+  margin-bottom: 2rem;
+}
+
+.analytics-strip {
+  margin-bottom: 2rem;
 }
 
 @media (max-width: 1000px) {
