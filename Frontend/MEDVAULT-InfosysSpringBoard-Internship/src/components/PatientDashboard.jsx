@@ -1,7 +1,128 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './PatientDashboard.css';
 import axios from 'axios';
+
+const REGISTRY_KEY = 'doctorPatientRegistry';
+
+const parseStoredRegistry = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REGISTRY_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const createPatientKey = (patient) => {
+  const email = (patient.email || '').trim().toLowerCase();
+  if (email) return email;
+  const name = (patient.username || patient.name || 'patient')
+    .trim()
+    .toLowerCase()
+    .split(' ')
+    .filter(Boolean)
+    .join('-');
+  const phone = (patient.phoneNumber || '').split(' ').join('');
+  return `${name}-${phone || 'na'}`;
+};
+
+const formatDateTime = (dateTime) => {
+  if (!dateTime) return 'N/A';
+  const date = new Date(dateTime);
+  if (Number.isNaN(date.getTime())) return 'N/A';
+  return date.toLocaleString();
+};
+
+const extractNumeric = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  const numberRegex = /-?\d+(?:\.\d+)?/;
+  const match = numberRegex.exec(String(value));
+  return match ? Number(match[0]) : null;
+};
+
+const buildSparklinePoints = (values, width = 120, height = 40) => {
+  if (!Array.isArray(values) || values.length === 0) return '';
+  const clean = values.filter((value) => Number.isFinite(value));
+  if (!clean.length) return '';
+  if (clean.length === 1) {
+    const y = height / 2;
+    return `0,${y} ${width},${y}`;
+  }
+
+  const min = Math.min(...clean);
+  const max = Math.max(...clean);
+  const spread = max - min || 1;
+  const stepX = width / (clean.length - 1);
+
+  return clean
+    .map((value, index) => {
+      const x = index * stepX;
+      const y = height - ((value - min) / spread) * height;
+      return `${x.toFixed(2)},${y.toFixed(2)}`;
+    })
+    .join(' ');
+};
+
+const computeAverage = (values) => {
+  if (!values.length) return null;
+  const total = values.reduce((sum, value) => sum + value, 0);
+  return total / values.length;
+};
+
+const createDummyAppointments = () => {
+  const now = new Date();
+  const upcomingDate = new Date(now);
+  upcomingDate.setDate(now.getDate() + 2);
+
+  const pastDate = new Date(now);
+  pastDate.setDate(now.getDate() - 6);
+
+  const isoDate = (date) => date.toISOString().slice(0, 10);
+
+  return [
+    {
+      id: `demo-upcoming-${now.getTime()}`,
+      doctorName: 'Dr. Priya Sharma',
+      department: 'General Medicine',
+      hospital: 'City Care Hospital',
+      appointmentDate: isoDate(upcomingDate),
+      appointmentTime: '10:30',
+      status: 'APPROVED',
+      reason: 'Follow-up consultation'
+    },
+    {
+      id: `demo-past-${now.getTime()}`,
+      doctorName: 'Dr. Ravi Menon',
+      department: 'Cardiology',
+      hospital: 'Apollo Health Centre',
+      appointmentDate: isoDate(pastDate),
+      appointmentTime: '15:00',
+      status: 'COMPLETED',
+      reason: 'Routine checkup'
+    }
+  ];
+};
+
+const withFallbackItems = (items, fallback) => {
+  if (Array.isArray(items) && items.length > 0) return items;
+  return fallback;
+};
+
+const isReportsLink = (link) => typeof link === 'string' && link.includes('tab=reports');
+
+const openInNewTab = (link) => {
+  if (!link) return;
+  const anchor = globalThis.document.createElement('a');
+  anchor.href = link;
+  anchor.target = '_blank';
+  anchor.rel = 'noopener noreferrer';
+  anchor.style.display = 'none';
+  globalThis.document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+};
 
 const PatientDashboard = () => {
   const navigate = useNavigate();
@@ -9,8 +130,14 @@ const PatientDashboard = () => {
   const [userName, setUserName] = useState('');
   const [showStats, setShowStats] = useState(true);
   const [appointments, setAppointments] = useState([]);
+  const [patientIdentity, setPatientIdentity] = useState({
+    name: '',
+    email: '',
+    phoneNumber: ''
+  });
+  const [registryData, setRegistryData] = useState({});
 
-   useEffect(() => {
+  useEffect(() => {
     const fetchPatientProfile = async () => {
       try {
         const token = localStorage.getItem('token');
@@ -22,14 +149,17 @@ const PatientDashboard = () => {
 
         const patient = response.data;
 
-       setUserName(
-  patient?.user?.name ||
-  patient?.name ||
-  patient?.fullName ||
-  'Patient'
-);
+        const mergedPatient = {
+          name: patient?.user?.name || patient?.name || patient?.fullName || '',
+          email: patient?.user?.email || patient?.email || '',
+          phoneNumber: patient?.phoneNumber || patient?.user?.phoneNumber || ''
+        };
 
+        setPatientIdentity(mergedPatient);
 
+        setUserName(
+          mergedPatient.name || 'Patient'
+        );
       } catch (error) {
         console.error('Failed to fetch patient profile', error);
         setUserName('Patient');
@@ -37,6 +167,21 @@ const PatientDashboard = () => {
     };
 
     fetchPatientProfile();
+  }, []);
+
+  useEffect(() => {
+    const loadRegistry = () => {
+      setRegistryData(parseStoredRegistry());
+    };
+
+    loadRegistry();
+    globalThis.addEventListener('focus', loadRegistry);
+    globalThis.addEventListener('storage', loadRegistry);
+
+    return () => {
+      globalThis.removeEventListener('focus', loadRegistry);
+      globalThis.removeEventListener('storage', loadRegistry);
+    };
   }, []);
 
   useEffect(() => {
@@ -51,11 +196,12 @@ const PatientDashboard = () => {
         }
       });
 
-      setAppointments(resp.data || []);
+      const list = Array.isArray(resp.data) ? resp.data : [];
+      setAppointments(list.length > 0 ? list : createDummyAppointments());
 
     } catch (error) {
       console.error('Failed to load appointments', error);
-      setAppointments([]);
+      setAppointments(createDummyAppointments());
     }
   };
 
@@ -87,6 +233,9 @@ const PatientDashboard = () => {
 
   const handleNavClick = (event, link) => {
     if (link?.startsWith('/')) {
+      if (isReportsLink(link)) {
+        return;
+      }
       event.preventDefault();
       navigate(link);
     }
@@ -94,6 +243,10 @@ const PatientDashboard = () => {
 
   const handleCardAction = (link) => {
     if (link?.startsWith('/')) {
+      if (isReportsLink(link)) {
+        openInNewTab(link);
+        return;
+      }
       navigate(link);
     }
   };
@@ -128,19 +281,19 @@ const PatientDashboard = () => {
 
     return { ...item, dateTime };
   })
-  .filter((item) => !isNaN(item.dateTime))
+  .filter((item) => !Number.isNaN(item.dateTime.getTime()))
   .filter((item) => item.dateTime >= new Date())
   .sort((a, b) => a.dateTime - b.dateTime)
   .slice(0, 3);
 
   const nextAppointment = appointments
-  .filter((item) => item.status !== 'CANCELLED')
-  .map(item => ({
-    ...item,
-    dateTime: new Date(`${item.appointmentDate}T${item.appointmentTime}`)
-  }))
-  .filter(item => item.dateTime >= new Date())
-  .sort((a, b) => a.dateTime - b.dateTime)[0];
+    .filter((item) => item.status !== 'CANCELLED')
+    .map((item) => ({
+      ...item,
+      dateTime: new Date(`${item.appointmentDate}T${item.appointmentTime}`)
+    }))
+    .filter((item) => item.dateTime >= new Date())
+    .sort((a, b) => a.dateTime - b.dateTime)[0];
 
   const pendingNotificationCount = appointments.filter((item) => {
     const normalizedStatus = (item.status || '').toUpperCase();
@@ -149,35 +302,210 @@ const PatientDashboard = () => {
 
   const unreadNotificationCount = Number(localStorage.getItem('unreadNotificationCount') || 0) || pendingNotificationCount;
 
+  const effectivePatientIdentity = useMemo(() => {
+    let storedProfile = {};
+    try {
+      storedProfile = JSON.parse(localStorage.getItem('medvaultProfile') || '{}');
+    } catch {
+      storedProfile = {};
+    }
+
+    return {
+      name: patientIdentity.name || storedProfile.username || storedProfile.name || userName || 'Patient',
+      email: patientIdentity.email || storedProfile.email || '',
+      phoneNumber: patientIdentity.phoneNumber || storedProfile.phoneNumber || ''
+    };
+  }, [patientIdentity, userName]);
+
+  const patientKey = useMemo(() => createPatientKey(effectivePatientIdentity), [effectivePatientIdentity]);
+
+  useEffect(() => {
+    if (!patientKey) return;
+
+    const registry = parseStoredRegistry();
+    const existing = registry[patientKey] || {};
+
+    const now = Date.now();
+    const seededCheckups = [
+      {
+        id: now + 1,
+        measuredAt: new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString(),
+        bp: '122/80',
+        heartRate: '82',
+        sugarLevel: '128',
+        weight: '72.1'
+      },
+      {
+        id: now + 2,
+        measuredAt: new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        bp: '118/76',
+        heartRate: '78',
+        sugarLevel: '121',
+        weight: '71.8'
+      },
+      {
+        id: now + 3,
+        measuredAt: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(),
+        bp: '120/78',
+        heartRate: '80',
+        sugarLevel: '124',
+        weight: '71.6'
+      }
+    ];
+
+    const seededPrescriptions = [
+      {
+        id: now + 4,
+        dateIssued: new Date(now - 6 * 24 * 60 * 60 * 1000).toISOString(),
+        medication: 'Metformin 500mg',
+        dosage: '1 tablet',
+        duration: '30 days',
+        instructions: 'After dinner'
+      }
+    ];
+
+    const seededReports = [
+      {
+        id: now + 5,
+        fileName: 'Dummy_Blood_Report.pdf',
+        uploadedAt: new Date(now - 5 * 24 * 60 * 60 * 1000).toISOString(),
+        note: 'Sample report for dashboard testing',
+        dataUrl: '',
+        uploadedBy: 'doctor'
+      }
+    ];
+
+    const seededTips = [
+      {
+        id: now + 6,
+        addedAt: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
+        text: 'Walk 30 minutes daily and reduce sugar intake.'
+      }
+    ];
+
+    const nextEntry = {
+      ...existing,
+      profile: {
+        ...existing.profile,
+        name: existing.profile?.name || effectivePatientIdentity.name,
+        email: existing.profile?.email || effectivePatientIdentity.email,
+        phoneNumber: existing.profile?.phoneNumber || effectivePatientIdentity.phoneNumber
+      },
+      review: {
+        ...existing.review,
+        doctorNotes:
+          existing.review?.doctorNotes ||
+          'Continue current medication and monitor vitals weekly.'
+      },
+      prescriptions: withFallbackItems(existing.prescriptions, seededPrescriptions),
+      reports: withFallbackItems(existing.reports, seededReports),
+      checkups: withFallbackItems(existing.checkups, seededCheckups),
+      tips: withFallbackItems(existing.tips, seededTips)
+    };
+
+    const nextRegistry = {
+      ...registry,
+      [patientKey]: nextEntry
+    };
+
+    localStorage.setItem(REGISTRY_KEY, JSON.stringify(nextRegistry));
+    setRegistryData(nextRegistry);
+  }, [effectivePatientIdentity, patientKey]);
+
+  const allCheckups = useMemo(() => {
+    const list = registryData[patientKey]?.checkups;
+    if (!Array.isArray(list)) return [];
+    return [...list].sort((a, b) => new Date(b?.measuredAt || 0) - new Date(a?.measuredAt || 0));
+  }, [registryData, patientKey]);
+
+  const patientReports = useMemo(() => {
+    const list = registryData[patientKey]?.reports;
+    if (!Array.isArray(list)) return [];
+    return [...list].sort((a, b) => new Date(b?.uploadedAt || 0) - new Date(a?.uploadedAt || 0));
+  }, [registryData, patientKey]);
+
+  const latestReport = patientReports[0] || null;
+
+  const checkupsForGraph = useMemo(() => {
+    return [...allCheckups]
+      .reverse()
+      .slice(-10)
+      .map((entry) => ({
+        measuredAt: entry?.measuredAt,
+        heartRate: extractNumeric(entry?.heartRate),
+        sugarLevel: extractNumeric(entry?.sugarLevel),
+        weight: extractNumeric(entry?.weight)
+      }));
+  }, [allCheckups]);
+
+  const latestCheckup = allCheckups[0] || null;
+  const bpReadings = allCheckups.map((item) => item?.bp).filter((value) => String(value || '').trim());
+  const heartRateSeries = checkupsForGraph.map((item) => item.heartRate).filter((value) => Number.isFinite(value));
+  const sugarSeries = checkupsForGraph.map((item) => item.sugarLevel).filter((value) => Number.isFinite(value));
+  const weightSeries = checkupsForGraph.map((item) => item.weight).filter((value) => Number.isFinite(value));
+
+  const avgHeartRate = computeAverage(heartRateSeries);
+  const avgSugar = computeAverage(sugarSeries);
+  const latestWeight = weightSeries.length ? weightSeries.at(-1) : null;
+
+  const heartLinePoints = buildSparklinePoints(heartRateSeries);
+  const sugarLinePoints = buildSparklinePoints(sugarSeries);
+  const weightLinePoints = buildSparklinePoints(weightSeries);
+
+  const analyticsPageLink = '/patient-analytics';
+
+  const handleViewReport = (report) => {
+    if (report?.dataUrl) {
+      globalThis.open(report.dataUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    navigate('/patient-profile?tab=reports');
+  };
+
+  const handleDownloadReport = (report) => {
+    if (!report?.dataUrl) {
+      navigate('/patient-profile?tab=reports');
+      return;
+    }
+
+    const anchor = globalThis.document.createElement('a');
+    anchor.href = report.dataUrl;
+    anchor.download = report.fileName || 'report.pdf';
+    anchor.style.display = 'none';
+    globalThis.document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+  };
+
 
   const dashboardCards = [
     {
       id: 0,
-      title: 'Overview',
+      title: 'Registery file',
       icon: '✨',
       color: '#3b82f6',
-      link: '#summary'
+      link: '/patient-registry-file'
     },
     {
       id: 1,
       title: 'Appointments',
       icon: '📅',
       color: '#0066cc',
-      link: '#appointments'
+      link: '/patient-bookings?tab=all'
     },
     {
       id: 2,
       title: 'Health Analytics',
       icon: '📈',
       color: '#00b8a9',
-      link: '#analytics'
+      link: analyticsPageLink
     },
     {
       id: 3,
       title: 'Reports',
       icon: '📄',
       color: '#9b59b6',
-      link: '#reports'
+      link: '/patient-profile?tab=reports'
     },
     {
       id: 4,
@@ -264,6 +592,7 @@ const PatientDashboard = () => {
                   </span>
                 )}
               </button>
+
               <button onClick={handleLogout} className="logout-btn" title="Logout">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                   <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -286,7 +615,14 @@ const PatientDashboard = () => {
             </div>
             <nav className="sidebar-nav">
               {dashboardCards.map((card) => (
-                <a key={card.id} className="sidebar-item" href={card.link} onClick={(event) => handleNavClick(event, card.link)}>
+                <a
+                  key={card.id}
+                  className="sidebar-item"
+                  href={card.link}
+                  target={isReportsLink(card.link) ? '_blank' : undefined}
+                  rel={isReportsLink(card.link) ? 'noopener noreferrer' : undefined}
+                  onClick={(event) => handleNavClick(event, card.link)}
+                >
                   <span
                     className="sidebar-icon"
                     style={{
@@ -359,8 +695,10 @@ const PatientDashboard = () => {
                   <div className="summary-icon" aria-hidden="true">📄</div>
                   <div>
                     <p className="summary-label">Latest Report</p>
-                    <h3 className="summary-value">Blood Work</h3>
-                    <span className="summary-meta">Uploaded 2 days ago</span>
+                    <h3 className="summary-value">{latestReport?.fileName || 'No reports yet'}</h3>
+                    <span className="summary-meta">
+                      {latestReport ? `Uploaded ${formatDateTime(latestReport.uploadedAt)}` : 'Upload report to view'}
+                    </span>
                   </div>
                 </div>
                 <div className="summary-card">
@@ -429,9 +767,7 @@ const PatientDashboard = () => {
 }`}>
   {appointment.status}
 </span>
-                        <>
-  <button className="danger-btn">Cancel</button>
-</>
+ 
                       </div>
                     </article>
                   ))
@@ -443,9 +779,9 @@ const PatientDashboard = () => {
               <div className="section-header">
                 <div>
                   <h2 className="section-title">Health analytics</h2>
-                  <p className="section-subtitle">Trends from recent vitals</p>
+                  <p className="section-subtitle">Doctor-entered checkup details from all appointments</p>
                 </div>
-                <button className="link-pill" onClick={() => handleCardAction('#analytics')}>
+                <button className="link-pill" onClick={() => handleCardAction(analyticsPageLink)}>
                   View Full Insights
                 </button>
               </div>
@@ -454,45 +790,45 @@ const PatientDashboard = () => {
                 <div className="analytics-card">
                   <div className="analytics-header">
                     <span>Blood Pressure</span>
-                    <span className="trend-indicator good">🟢 Stable</span>
+                    <span className="trend-indicator good">🟢 Latest</span>
                   </div>
-                  <h3>118/76</h3>
-                  <p className="analytics-meta">Last 7 days</p>
+                  <h3>{latestCheckup?.bp || 'N/A'}</h3>
+                  <p className="analytics-meta">{bpReadings.length} checkup entries</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,28 20,20 40,22 60,16 80,18 100,12 120,14" />
+                    <polyline points={heartLinePoints || '0,20 120,20'} />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
                     <span>Sugar Level</span>
-                    <span className="trend-indicator warn">🟡 Watch</span>
+                    <span className="trend-indicator warn">🟡 Average</span>
                   </div>
-                  <h3>132 mg/dL</h3>
-                  <p className="analytics-meta">Fasting average</p>
+                  <h3>{avgSugar ? `${avgSugar.toFixed(1)} mg/dL` : 'N/A'}</h3>
+                  <p className="analytics-meta">Based on recent checkups</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,20 20,22 40,18 60,26 80,24 100,22 120,28" />
+                    <polyline points={sugarLinePoints || '0,20 120,20'} />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
                     <span>Weight Progress</span>
-                    <span className="trend-indicator good">🟢 Improving</span>
+                    <span className="trend-indicator good">🟢 Latest</span>
                   </div>
-                  <h3>71.2 kg</h3>
-                  <p className="analytics-meta">-1.4 kg this month</p>
+                  <h3>{latestWeight ? `${latestWeight.toFixed(1)} kg` : 'N/A'}</h3>
+                  <p className="analytics-meta">From doctor checkup notes</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,12 20,16 40,18 60,20 80,24 100,26 120,30" />
+                    <polyline points={weightLinePoints || '0,20 120,20'} />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
                     <span>Heart Rate</span>
-                    <span className="trend-indicator alert">🔴 Elevated</span>
+                    <span className="trend-indicator alert">🔴 Average</span>
                   </div>
-                  <h3>98 bpm</h3>
-                  <p className="analytics-meta">Resting average</p>
+                  <h3>{avgHeartRate ? `${avgHeartRate.toFixed(0)} bpm` : 'N/A'}</h3>
+                  <p className="analytics-meta">Based on recent checkups</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,30 20,26 40,18 60,22 80,14 100,20 120,16" />
+                    <polyline points={heartLinePoints || '0,20 120,20'} />
                   </svg>
                 </div>
               </div>
@@ -504,43 +840,48 @@ const PatientDashboard = () => {
                   <h2 className="section-title">Reports</h2>
                   <p className="section-subtitle">Latest uploads and quick access</p>
                 </div>
-                <button className="link-pill">Upload Report</button>
+                <button className="link-pill" onClick={() => handleCardAction('/patient-profile?tab=reports')}>
+                  Upload Report
+                </button>
               </div>
 
               <div className="reports-list">
-                <div className="report-item">
-                  <div>
-                    <h3>Complete Blood Count</h3>
-                    <p>Lab • Uploaded Feb 10</p>
+                {patientReports.length === 0 ? (
+                  <div className="report-item">
+                    <div>
+                      <h3>No reports uploaded yet</h3>
+                      <p>Add reports from the Reports tab to view them here.</p>
+                    </div>
+                    <div className="report-actions">
+                      <span className="report-status muted">No Data</span>
+                      <button className="primary-btn" onClick={() => navigate('/patient-profile?tab=reports')}>
+                        Go to Reports
+                      </button>
+                    </div>
                   </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Chest X-Ray</h3>
-                    <p>X-ray • Uploaded Feb 5</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Prescription Update</h3>
-                    <p>Prescription • Uploaded Jan 30</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status muted">Processing</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
+                ) : (
+                  patientReports.slice(0, 3).map((item) => (
+                    <div className="report-item" key={item.id || `${item.fileName}-${item.uploadedAt}`}>
+                      <div>
+                        <h3>{item.fileName || 'Report'}</h3>
+                        <p>
+                          {(item.note || item.uploadedBy || 'Report')} • Uploaded {formatDateTime(item.uploadedAt)}
+                        </p>
+                      </div>
+                      <div className="report-actions">
+                        <span className={`report-status ${item.dataUrl ? '' : 'muted'}`}>
+                          {item.dataUrl ? 'Ready' : 'Unavailable'}
+                        </span>
+                        <button className="ghost-btn" onClick={() => handleViewReport(item)}>
+                          View PDF
+                        </button>
+                        <button className="primary-btn" onClick={() => handleDownloadReport(item)}>
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </section>
 
@@ -635,6 +976,7 @@ const PatientDashboard = () => {
       )}
     </div>
   );
+
 };
 
 export default PatientDashboard;

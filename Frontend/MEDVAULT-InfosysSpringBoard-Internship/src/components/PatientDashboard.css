@@ -921,6 +921,129 @@
   stroke-linejoin: round;
 }
 
+.analytics-graph-card,
+.checkup-details-card {
+  margin-top: 1.25rem;
+  border: 1px solid var(--border-light);
+  background: var(--bg-card);
+  border-radius: 18px;
+  padding: 1.2rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+}
+
+.analytics-multi-graph {
+  width: 100%;
+  height: 120px;
+  margin-top: 0.6rem;
+}
+
+.graph-line {
+  fill: none;
+  stroke-width: 2.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.graph-line.heart,
+.legend-dot.heart {
+  stroke: var(--primary);
+  background: var(--primary);
+}
+
+.graph-line.sugar,
+.legend-dot.sugar {
+  stroke: var(--accent);
+  background: var(--accent);
+}
+
+.graph-line.weight,
+.legend-dot.weight {
+  stroke: var(--success);
+  background: var(--success);
+}
+
+.analytics-legend {
+  margin-top: 0.65rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.85rem;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.analytics-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.datewise-values-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 0.6rem;
+}
+
+.datewise-value-item {
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 0.55rem 0.7rem;
+  background: var(--bg-secondary);
+}
+
+.datewise-date {
+  margin: 0;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.datewise-metrics {
+  margin: 0.2rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.checkup-details-card h3 {
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+  margin-bottom: 0.85rem;
+}
+
+.checkup-table-wrap {
+  overflow-x: auto;
+}
+
+.checkup-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 620px;
+}
+
+.checkup-table th,
+.checkup-table td {
+  text-align: left;
+  padding: 0.7rem 0.65rem;
+  border-bottom: 1px solid var(--border-light);
+  font-size: var(--text-sm);
+}
+
+.checkup-table th {
+  color: var(--text-secondary);
+  font-weight: var(--weight-semibold);
+}
+
+.checkup-table td {
+  color: var(--text-primary);
+}
+
 /* Reports */
 .reports-list {
   display: flex;

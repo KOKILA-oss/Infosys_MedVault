@@ -88,6 +88,30 @@
   box-shadow: var(--shadow-lg);
 }
 
+.profile-tab-row {
+  display: flex;
+  gap: 0.65rem;
+  margin-bottom: 1.35rem;
+}
+
+.tab-btn {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  padding: 0.55rem 1rem;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+}
+
+.tab-btn.active {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, var(--bg-secondary));
+}
+
 .profile-section + .profile-section {
   margin-top: 2rem;
 }
@@ -147,8 +171,77 @@
   box-shadow: 0 0 0 4px rgba(0, 102, 204, 0.1);
 }
 
+.report-upload-row {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(150px, 220px);
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+  align-items: center;
+}
+
+.upload-btn {
+  position: relative;
+  overflow: hidden;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-btn input[type='file'] {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.reports-list {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.report-item {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 0.9rem 1rem;
+  background: linear-gradient(135deg, var(--bg-secondary), color-mix(in srgb, var(--primary) 5%, var(--bg-secondary)));
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.report-item h3 {
+  font-size: var(--text-base);
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.report-item p {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.report-date {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+}
+
+.report-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 900px) {
   .profile-topbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .report-item {
     flex-direction: column;
     align-items: flex-start;
   }
@@ -161,5 +254,9 @@
 
   .profile-card {
     padding: 1.5rem;
+  }
+
+  .report-upload-row {
+    grid-template-columns: 1fr;
   }
 }

@@ -1,9 +1,11 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import './DoctorDashboard.css';
 
 const APPOINTMENTS_KEY = 'patientAppointments';
+const DOCTOR_LEAVE_DATES_KEY = 'doctorLeaveDates';
+const REVIEWS_KEY = 'patientDoctorRatings';
 
 const formatTimeLabel = (timeValue) => {
   if (!timeValue) return '';
@@ -27,13 +29,46 @@ const getInitials = (name) => {
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
+const formatDateKey = (date) => {
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const parseStoredLeaveDates = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DOCTOR_LEAVE_DATES_KEY) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const parseStoredRatings = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(REVIEWS_KEY) || '{}');
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
 const DoctorDashboard = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState('light');
   const [userName, setUserName] = useState('');
   const [showStats, setShowStats] = useState(true);
   const [todayAppointments, setTodayAppointments] = useState([]);
+  const [allAppointments, setAllAppointments] = useState([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const [approvedCountByDate, setApprovedCountByDate] = useState({});
+  const [leaveDates, setLeaveDates] = useState([]);
+  const [showInsightsPreview, setShowInsightsPreview] = useState(false);
+
+  useEffect(() => {
+    setLeaveDates(parseStoredLeaveDates());
+  }, []);
 
   useEffect(() => {
   const fetchUnreadCount = async () => {
@@ -75,6 +110,14 @@ const DoctorDashboard = () => {
   headers: { Authorization: `Bearer ${token}` }
 });
       const data = resp.data || [];
+      setAllAppointments(Array.isArray(data) ? data : []);
+
+      const approvedCounts = data.reduce((acc, item) => {
+        if ((item.status || '').toUpperCase() !== 'APPROVED' || !item.appointmentDate) return acc;
+        acc[item.appointmentDate] = (acc[item.appointmentDate] || 0) + 1;
+        return acc;
+      }, {});
+      setApprovedCountByDate(approvedCounts);
 
       const now = new Date();
 
@@ -111,6 +154,7 @@ const DoctorDashboard = () => {
     } catch (err) {
       console.error('Failed to load appointments', err);
       setTodayAppointments([]);
+      setAllAppointments([]);
     }
   };
 
@@ -173,6 +217,39 @@ const DoctorDashboard = () => {
     }
   };
 
+  const calendarModel = useMemo(() => {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+    const firstDay = new Date(year, month, 1);
+    const startWeekday = firstDay.getDay();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const cells = [];
+    for (let i = 0; i < startWeekday; i += 1) {
+      cells.push({ type: 'blank', key: `blank-${i}` });
+    }
+
+    for (let day = 1; day <= daysInMonth; day += 1) {
+      const date = new Date(year, month, day);
+      const dateKey = formatDateKey(date);
+      cells.push({
+        type: 'day',
+        key: dateKey,
+        day,
+        dateKey,
+        isBusy: leaveDates.includes(dateKey),
+        approvedCount: approvedCountByDate[dateKey] || 0,
+        isToday: dateKey === formatDateKey(new Date())
+      });
+    }
+
+    return {
+      monthLabel: new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
+      cells
+    };
+  }, [leaveDates, approvedCountByDate]);
+
 
   const dashboardCards = [
     {
@@ -201,7 +278,7 @@ const DoctorDashboard = () => {
       title: 'Schedule',
       icon: '🗓️',
       color: '#9b59b6',
-      link: '#schedule'
+      link: '/doctor-schedule'
     },
     {
       id: 4,
@@ -215,7 +292,7 @@ const DoctorDashboard = () => {
       title: 'Reports',
       icon: '📄',
       color: '#4f46e5',
-      link: '#reports'
+      link: '/doctor-reports'
     },
     {
       id: 6,
@@ -225,6 +302,44 @@ const DoctorDashboard = () => {
       link: '#settings'
     }
   ];
+
+  const analyticsMetrics = useMemo(() => {
+    const now = new Date();
+    const todayKey = formatDateKey(now);
+
+    const weekStart = new Date(now);
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - 6);
+
+    const monthStart = new Date(now);
+    monthStart.setHours(0, 0, 0, 0);
+    monthStart.setDate(monthStart.getDate() - 29);
+
+    const appointmentDates = allAppointments
+      .filter((item) => (item?.status || '').toUpperCase() !== 'REJECTED' && item?.appointmentDate)
+      .map((item) => new Date(`${item.appointmentDate}T00:00:00`))
+      .filter((date) => !Number.isNaN(date.getTime()));
+
+    const dailyAppointments = appointmentDates.filter((date) => formatDateKey(date) === todayKey).length;
+    const lastWeekAppointments = appointmentDates.filter((date) => date >= weekStart && date <= now).length;
+    const oneMonthAppointments = appointmentDates.filter((date) => date >= monthStart && date <= now).length;
+
+    const ratings = Object.values(parseStoredRatings())
+      .map((item) => Number(item?.rating || 0))
+      .filter((value) => value > 0);
+
+    const avgRating = ratings.length
+      ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1)
+      : '0.0';
+
+    return {
+      dailyAppointments,
+      lastWeekAppointments,
+      oneMonthAppointments,
+      avgRating,
+      totalRatings: ratings.length
+    };
+  }, [allAppointments]);
 
   return (
     <div className="dashboard-container">
@@ -490,33 +605,41 @@ const DoctorDashboard = () => {
             <section id="schedule" className="dashboard-section">
               <div className="section-header">
                 <div>
-                  <h2 className="section-title">Schedule blocks</h2>
-                  <p className="section-subtitle">Manage clinic availability and telehealth slots</p>
+                  <h2 className="section-title">Schedule</h2>
+                  <p className="section-subtitle">Monthly preview of busy days and approved appointments count</p>
                 </div>
-                <button className="link-pill">Edit Schedule</button>
+                <button className="link-pill" onClick={() => handleCardAction('/doctor-schedule')}>
+                  Edit Schedule
+                </button>
               </div>
 
-              <div className="schedule-grid">
-                <div className="schedule-card">
-                  <div>
-                    <h3>Morning Clinic</h3>
-                    <p>9:00 AM - 1:00 PM</p>
-                  </div>
-                  <span className="status-badge confirmed">Open</span>
+              <div className="calendar-card mini-calendar">
+                <div className="calendar-head">
+                  <h3>{calendarModel.monthLabel}</h3>
+                  <p>Read-only preview. Use Edit Schedule to update leave days.</p>
                 </div>
-                <div className="schedule-card">
-                  <div>
-                    <h3>Teleconsult</h3>
-                    <p>2:00 PM - 4:00 PM</p>
-                  </div>
-                  <span className="status-badge pending">Limited</span>
+
+                <div className="calendar-weekdays">
+                  {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+                    <span key={day}>{day}</span>
+                  ))}
                 </div>
-                <div className="schedule-card">
-                  <div>
-                    <h3>Evening Rounds</h3>
-                    <p>5:30 PM - 7:00 PM</p>
-                  </div>
-                  <span className="status-badge confirmed">Open</span>
+
+                <div className="calendar-grid">
+                  {calendarModel.cells.map((cell) =>
+                    cell.type === 'blank' ? (
+                      <div key={cell.key} className="calendar-cell blank" />
+                    ) : (
+                      <div
+                        key={cell.key}
+                        className={`calendar-cell day ${cell.isBusy ? 'busy' : ''} ${cell.isToday ? 'today' : ''}`}
+                      >
+                        <span className="day-number">{cell.day}</span>
+                        <span className="approved-count">{cell.approvedCount}</span>
+                        <span className="approved-label">Approved</span>
+                      </div>
+                    )
+                  )}
                 </div>
               </div>
             </section>
@@ -527,7 +650,7 @@ const DoctorDashboard = () => {
                   <h2 className="section-title">Health analytics</h2>
                   <p className="section-subtitle">Clinic performance indicators</p>
                 </div>
-                <button className="link-pill" onClick={() => handleCardAction('#analytics')}>
+                <button className="link-pill" onClick={() => setShowInsightsPreview(true)}>
                   View Full Insights
                 </button>
               </div>
@@ -535,93 +658,47 @@ const DoctorDashboard = () => {
               <div className="analytics-grid">
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Patient Volume</span>
-                    <span className="trend-indicator good">🟢 Rising</span>
+                    <span>Daily Appointments</span>
+                    <span className="trend-indicator good">Today</span>
                   </div>
-                  <h3>128 Visits</h3>
-                  <p className="analytics-meta">Last 7 days</p>
+                  <h3>{analyticsMetrics.dailyAppointments}</h3>
+                  <p className="analytics-meta">Appointments scheduled today</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,28 20,24 40,22 60,18 80,16 100,14 120,10" />
+                    <polyline points="0,24 20,22 40,20 60,18 80,20 100,16 120,14" />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Average Wait Time</span>
-                    <span className="trend-indicator warn">🟡 Needs focus</span>
+                    <span>Last Week Appointments</span>
+                    <span className="trend-indicator good">7 Days</span>
                   </div>
-                  <h3>18 mins</h3>
-                  <p className="analytics-meta">Target under 15 mins</p>
+                  <h3>{analyticsMetrics.lastWeekAppointments}</h3>
+                  <p className="analytics-meta">Total in last 7 days</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,12 20,16 40,18 60,22 80,20 100,24 120,26" />
+                    <polyline points="0,30 20,28 40,24 60,20 80,18 100,16 120,14" />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Follow-up Rate</span>
-                    <span className="trend-indicator good">🟢 Improving</span>
+                    <span>One Month Appointments</span>
+                    <span className="trend-indicator good">30 Days</span>
                   </div>
-                  <h3>74%</h3>
-                  <p className="analytics-meta">Monthly average</p>
+                  <h3>{analyticsMetrics.oneMonthAppointments}</h3>
+                  <p className="analytics-meta">Total in last 30 days</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,30 20,26 40,22 60,20 80,18 100,14 120,12" />
+                    <polyline points="0,32 20,30 40,27 60,24 80,20 100,16 120,12" />
                   </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Patient Satisfaction</span>
-                    <span className="trend-indicator alert">🔴 Review</span>
+                    <span>Avg Ratings</span>
+                    <span className="trend-indicator good">Reviews</span>
                   </div>
-                  <h3>4.2 / 5</h3>
-                  <p className="analytics-meta">Last 30 days</p>
+                  <h3>{analyticsMetrics.avgRating} / 5</h3>
+                  <p className="analytics-meta">From {analyticsMetrics.totalRatings} submitted ratings</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,20 20,18 40,16 60,18 80,22 100,24 120,26" />
+                    <polyline points="0,28 20,24 40,20 60,18 80,16 100,14 120,12" />
                   </svg>
-                </div>
-              </div>
-            </section>
-
-            <section id="reports" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Reports</h2>
-                  <p className="section-subtitle">Pending reviews and uploads</p>
-                </div>
-                <button className="link-pill">Create Report</button>
-              </div>
-
-              <div className="reports-list">
-                <div className="report-item">
-                  <div>
-                    <h3>Lab Panel Review</h3>
-                    <p>Sameer Joshi • Uploaded Feb 10</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Urgent</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Approve</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Radiology Summary</h3>
-                    <p>Meera Patel • Uploaded Feb 7</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Approve</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Prescription Update</h3>
-                    <p>Nisha Verma • Uploaded Feb 2</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status muted">Draft</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Finalize</button>
-                  </div>
                 </div>
               </div>
             </section>
@@ -646,6 +723,60 @@ const DoctorDashboard = () => {
           </div>
         </div>
       </main>
+
+      {showInsightsPreview && (
+        <div className="insights-overlay">
+          <section className="insights-modal">
+            <div className="insights-modal-head">
+              <div>
+                <h2>Full Insights</h2>
+                <p>Detailed preview of appointments and ratings performance.</p>
+              </div>
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => setShowInsightsPreview(false)}
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="analytics-grid insights-grid">
+              <div className="analytics-card">
+                <div className="analytics-header">
+                  <span>Daily Appointments</span>
+                </div>
+                <h3>{analyticsMetrics.dailyAppointments}</h3>
+                <p className="analytics-meta">Current day total</p>
+              </div>
+
+              <div className="analytics-card">
+                <div className="analytics-header">
+                  <span>Last Week Appointments</span>
+                </div>
+                <h3>{analyticsMetrics.lastWeekAppointments}</h3>
+                <p className="analytics-meta">Rolling 7-day total</p>
+              </div>
+
+              <div className="analytics-card">
+                <div className="analytics-header">
+                  <span>One Month Appointments</span>
+                </div>
+                <h3>{analyticsMetrics.oneMonthAppointments}</h3>
+                <p className="analytics-meta">Rolling 30-day total</p>
+              </div>
+
+              <div className="analytics-card">
+                <div className="analytics-header">
+                  <span>Average Ratings</span>
+                </div>
+                <h3>{analyticsMetrics.avgRating} / 5</h3>
+                <p className="analytics-meta">Based on {analyticsMetrics.totalRatings} reviews</p>
+              </div>
+            </div>
+          </section>
+        </div>
+      )}
 
       {showStats && (
         <aside className="health-stats">
