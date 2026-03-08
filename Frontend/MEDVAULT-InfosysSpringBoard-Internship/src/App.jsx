@@ -23,6 +23,7 @@ import AdminManageDoctors from './components/AdminManageDoctors';
 import AdminManagePatients from './components/AdminManagePatients';
 import NotificationsPage from './components/NotificationsPage';
 import './index.css';
+import Chatbot from './components/Chatbot';
 
 const DashboardGate = () => {
   const role = (localStorage.getItem('role') || '').toLowerCase();
@@ -72,6 +73,8 @@ function App() {
         
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      <Chatbot />
+
     </Router>
   );
 }
