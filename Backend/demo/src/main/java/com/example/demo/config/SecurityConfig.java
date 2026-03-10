@@ -33,7 +33,8 @@ public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Excepti
             "/api/auth/register/**",
             "/api/auth/login/**",
             "/api/auth/forgot-password/**",
-            "/api/notifications/**"
+            "/api/notifications/**",
+            "/chat/**"
     ).permitAll()
 
         // 👇 Allow patients to access their appointment endpoints

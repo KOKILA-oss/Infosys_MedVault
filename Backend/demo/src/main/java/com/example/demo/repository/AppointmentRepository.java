@@ -35,6 +35,11 @@ List<Appointment> findByDoctorEmailAndAppointmentDateAndStatus(
         AppointmentStatus status
     );
 
+    List<Appointment> findByPatientAndAppointmentDateGreaterThanEqual(
+        User patient,
+        LocalDate date
+);
+
     List<Appointment> findByDoctorAndAppointmentDate(User doctor, LocalDate date);
 
     boolean existsByDoctorAndAppointmentDateAndAppointmentTimeAndIdNot(
