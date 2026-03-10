@@ -58,7 +58,6 @@ const DoctorDashboard = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState('light');
   const [userName, setUserName] = useState('');
-  const [showStats, setShowStats] = useState(true);
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
@@ -447,53 +446,6 @@ useEffect(() => {
               <p className="welcome-subtitle">Your patients, appointments, and clinical insights</p>
             </div>
 
-            <section id="summary" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Quick overview</h2>
-                  <p className="section-subtitle">Your day at a glance</p>
-                </div>
-                <button className="link-pill" onClick={() => handleCardAction('/doctor-profile')}>
-                  View Profile
-                </button>
-              </div>
-
-              <div className="summary-grid">
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">👥</div>
-                  <div>
-                    <p className="summary-label">Patients Today</p>
-                    <h3 className="summary-value">18 Scheduled</h3>
-                    <span className="summary-meta">6 walk-ins expected</span>
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">📅</div>
-                  <div>
-                    <p className="summary-label">Next Appointment</p>
-                    <h3 className="summary-value">10:30 AM</h3>
-                    <span className="summary-meta">Dr. Clinic Room 2</span>
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">📄</div>
-                  <div>
-                    <p className="summary-label">Pending Reports</p>
-                    <h3 className="summary-value">7 Reports</h3>
-                    <span className="summary-meta">3 urgent</span>
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">❤️</div>
-                  <div>
-                    <p className="summary-label">On-call Status</p>
-                    <h3 className="summary-value">Available</h3>
-                    <span className="summary-meta status-good">Ready for consults</span>
-                  </div>
-                </div>
-              </div>
-            </section>
-
             <section id="appointments" className="dashboard-section">
               <div className="section-header">
                 <div>
@@ -652,7 +604,7 @@ useEffect(() => {
             <section id="analytics" className="dashboard-section">
               <div className="section-header">
                 <div>
-                  <h2 className="section-title">Health analytics</h2>
+                  <h2 className="section-title">Ananlysis</h2>
                   <p className="section-subtitle">Clinic performance indicators</p>
                 </div>
                 <button className="link-pill" onClick={() => setShowInsightsPreview(true)}>
@@ -828,39 +780,6 @@ useEffect(() => {
         </div>
       )}
 
-      {showStats && (
-        <aside className="health-stats">
-          <button
-            type="button"
-            className="stats-close"
-            aria-label="Minimize quick summary"
-            onClick={() => setShowStats(false)}
-          >
-            ✕
-          </button>
-          <div className="stat-item">
-            <div className="stat-icon vital-good">✅</div>
-            <div className="stat-info">
-              <span className="stat-label">Today&apos;s Patients</span>
-              <span className="stat-value">18</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">🧾</div>
-            <div className="stat-info">
-              <span className="stat-label">Pending Reports</span>
-              <span className="stat-value">7</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">⏰</div>
-            <div className="stat-info">
-              <span className="stat-label">Next Appointment</span>
-              <span className="stat-value">10:30 AM</span>
-            </div>
-          </div>
-        </aside>
-      )}
     </div>
   );
 };

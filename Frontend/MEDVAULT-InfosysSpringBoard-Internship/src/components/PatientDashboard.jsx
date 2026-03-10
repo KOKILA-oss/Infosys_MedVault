@@ -141,11 +141,11 @@ const PatientDashboard = () => {
   useEffect(() => {
     const storedName = localStorage.getItem('userName');
     const storedEmail = localStorage.getItem('userEmail');
-    if (storedName && storedName.trim()) {
+    if (storedName?.trim()) {
       setUserName(storedName.trim());
       return;
     }
-    if (storedEmail && storedEmail.includes('@')) {
+    if (storedEmail?.includes('@')) {
       setUserName(storedEmail.split('@')[0]);
       return;
     }
@@ -742,75 +742,6 @@ const formatTimeLabel = (timeValue) => {
               <h1 className="welcome-title">Welcome back, {userName} 👋</h1>
               <p className="welcome-subtitle">Your care, appointments, and health insights in one place</p>
             </div>
-
-            <section id="summary" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Quick overview</h2>
-                  <p className="section-subtitle">At-a-glance essentials for today</p>
-                </div>
-                <button className="link-pill" onClick={() => handleCardAction('/patient-profile')}>
-                  View Profile
-                </button>
-              </div>
-
-              <div className="summary-grid">
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">🧑‍⚕️</div>
-                  <div>
-                    <p className="summary-label">Assigned Doctor</p>
-                    <h3 className="summary-value">
-  {nextAppointment?.doctorName || 'Not Assigned'}
-</h3>
-<span className="summary-meta">
-  {nextAppointment ? nextAppointment.status : 'No upcoming appointment'}
-</span>
-
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">📅</div>
-                  <div>
-                    <p className="summary-label">Upcoming Appointment</p>
-                    {nextAppointment ? (
-  <>
-    <h3 className="summary-value">
-      {formatDateLabel(nextAppointment.appointmentDate)},{" "}
-      {formatTimeLabel(nextAppointment.appointmentTime)}
-    </h3>
-    <span className="summary-meta">
-      {nextAppointment.status}
-    </span>
-  </>
-) : (
-  <>
-    <h3 className="summary-value">No upcoming</h3>
-    <span className="summary-meta">Book an appointment</span>
-  </>
-)}
-
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">📄</div>
-                  <div>
-                    <p className="summary-label">Latest Report</p>
-                    <h3 className="summary-value">{latestReport?.fileName || 'No reports yet'}</h3>
-                    <span className="summary-meta">
-                      {latestReport ? latestReport.uploadedAt ? `Uploaded ${formatDateTime(latestReport.uploadedAt)}` : formatReportDate(latestReport.createdAt) : 'Upload report to view'}
-                    </span>
-                  </div>
-                </div>
-                <div className="summary-card">
-                  <div className="summary-icon" aria-hidden="true">❤️</div>
-                  <div>
-                    <p className="summary-label">Health Status</p>
-                    <h3 className="summary-value">Stable</h3>
-                    <span className="summary-meta status-good">On track</span>
-                  </div>
-                </div>
-              </div>
-            </section>
 
             <section id="appointments" className="dashboard-section">
               <div className="section-header">

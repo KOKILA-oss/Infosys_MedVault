@@ -12,9 +12,7 @@ const parseAppointmentList = (text) => {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      const match = line.match(
-        /^\d+\.\s+Dr\.\s+(.+?)\s+-\s+([^,]+),\s+(.+?)\s+at\s+(.+?)\s+\((.+)\)$/
-      );
+      const match = new RegExp(/^\d+\.\s+Dr\.\s+(.+?)\s+-\s+([^,]+),\s+(.+?)\s+at\s+(.+?)\s+\((.+)\)$/).exec(line);
       if (!match) {
         return { raw: line };
       }
@@ -94,7 +92,10 @@ const Chatbot = () => {
         aria-label="Open chatbot"
         title="Open chatbot"
       >
-        Chat
+        <span style={styles.minimizedEmoji} role="img" aria-hidden="true">
+          💬
+        </span>
+        <span style={styles.minimizedLabel}>Ask MedBot your query</span>
       </button>
     );
   }
@@ -102,7 +103,10 @@ const Chatbot = () => {
   return (
     <div style={styles.chatContainer}>
       <div style={styles.header}>
-        <strong>MedVault Assistant</strong>
+        <div>
+          <strong style={styles.headerTitle}>MedVault Assistant</strong>
+          <p style={styles.headerSubtitle}>Ask health or appointment questions</p>
+        </div>
         <button
           type="button"
           style={styles.minimizeButton}
@@ -147,7 +151,9 @@ const Chatbot = () => {
                   ))}
                 </div>
               ) : (
-                <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.text}</p>
+                <p style={{ ...styles.messageBubble, ...(msg.sender === "user" ? styles.userBubble : styles.botBubble) }}>
+                  {msg.text}
+                </p>
               )}
             </div>
           );
@@ -159,7 +165,7 @@ const Chatbot = () => {
           style={styles.input}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Ask something..."
+          placeholder="Ask MedBot anything..."
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               sendMessage();
@@ -178,52 +184,102 @@ const Chatbot = () => {
 const styles = {
   chatContainer: {
     position: "fixed",
-    bottom: "20px",
-    right: "20px",
-    width: "340px",
+    bottom: "22px",
+    right: "22px",
+    width: "370px",
     height: "auto",
-    background: "white",
-    borderRadius: "12px",
-    boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+    background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+    borderRadius: "16px",
+    boxShadow: "0 18px 45px rgba(13, 34, 71, 0.22)",
+    border: "1px solid #dce8ff",
     zIndex: 9999,
     display: "flex",
     flexDirection: "column"
   },
   header: {
     display: "flex",
-    alignItems: "center",
+    alignItems: "flex-start",
     justifyContent: "space-between",
-    borderBottom: "1px solid #eee",
-    padding: "10px 12px",
+    borderBottom: "1px solid #e5edff",
+    padding: "12px 14px",
+    background: "linear-gradient(135deg, #0f62fe 0%, #2d7dff 100%)",
+    borderTopLeftRadius: "16px",
+    borderTopRightRadius: "16px",
+    color: "#ffffff",
     fontSize: "14px"
+  },
+  headerTitle: {
+    display: "block",
+    fontSize: "14px",
+    letterSpacing: "0.01em"
+  },
+  headerSubtitle: {
+    margin: "2px 0 0",
+    fontSize: "11px",
+    opacity: 0.9
   },
   minimizeButton: {
     border: "none",
-    background: "#e8f0ff",
-    color: "#0f62fe",
+    background: "rgba(255,255,255,0.2)",
+    color: "#ffffff",
     borderRadius: "8px",
-    padding: "6px 10px",
+    padding: "4px 10px",
     cursor: "pointer",
     fontWeight: 600
   },
   minimizedButton: {
     position: "fixed",
-    bottom: "20px",
-    right: "20px",
-    border: "none",
+    bottom: "22px",
+    right: "22px",
+    border: "2px solid #7a2100",
     borderRadius: "999px",
-    background: "#0f62fe",
+    background: "linear-gradient(135deg, #ff7a00 0%, #ff2f2f 100%)",
     color: "white",
-    padding: "10px 14px",
-    boxShadow: "0 4px 16px rgba(15,98,254,0.35)",
+    padding: "11px 16px",
+    boxShadow: "0 12px 28px rgba(168, 50, 0, 0.4), 0 0 0 4px rgba(255, 122, 0, 0.18)",
     cursor: "pointer",
-    zIndex: 9999
+    zIndex: 9999,
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    fontWeight: 600,
+    maxWidth: "240px",
+    textAlign: "left"
+  },
+  minimizedEmoji: {
+    fontSize: "16px",
+    lineHeight: 1,
+    filter: "drop-shadow(0 1px 1px rgba(0,0,0,0.25))"
+  },
+  minimizedLabel: {
+    fontSize: "12px",
+    lineHeight: 1.2
   },
   chatBox: {
-    height: "320px",
+    height: "340px",
     overflowY: "auto",
-    padding: "10px",
+    padding: "12px",
     fontSize: "14px"
+  },
+  messageBubble: {
+    whiteSpace: "pre-wrap",
+    margin: 0,
+    display: "inline-block",
+    maxWidth: "90%",
+    borderRadius: "12px",
+    padding: "8px 10px",
+    lineHeight: 1.4
+  },
+  userBubble: {
+    background: "linear-gradient(135deg, #0f62fe 0%, #3d86ff 100%)",
+    color: "#ffffff",
+    borderBottomRightRadius: "4px"
+  },
+  botBubble: {
+    background: "#eef4ff",
+    color: "#1f2f46",
+    border: "1px solid #d9e7ff",
+    borderBottomLeftRadius: "4px"
   },
   appointmentResponse: {
     display: "flex",
@@ -239,26 +295,32 @@ const styles = {
     flexDirection: "column",
     gap: "4px",
     padding: "10px 12px",
-    borderRadius: "10px",
+    borderRadius: "12px",
     background: "#f4f8ff",
     border: "1px solid #d9e6ff"
   },
   inputContainer: {
     display: "flex",
-    borderTop: "1px solid #eee"
+    borderTop: "1px solid #e5edff",
+    padding: "10px",
+    gap: "8px"
   },
   input: {
     flex: 1,
-    border: "none",
+    border: "1px solid #d6e5ff",
+    borderRadius: "10px",
     padding: "10px",
-    outline: "none"
+    outline: "none",
+    background: "#ffffff"
   },
   button: {
     padding: "10px 14px",
     border: "none",
-    background: "#0f62fe",
+    borderRadius: "10px",
+    background: "linear-gradient(135deg, #0f62fe 0%, #2d7dff 100%)",
     color: "white",
-    cursor: "pointer"
+    cursor: "pointer",
+    fontWeight: 600
   }
 };
 

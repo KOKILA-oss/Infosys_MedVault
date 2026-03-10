@@ -4,6 +4,19 @@ import { useNavigate } from 'react-router-dom';
 import './DoctorSchedule.css';
 
 const DOCTOR_LEAVE_DATES_KEY = 'doctorLeaveDates';
+const DOCTOR_SCHEDULE_CONFIG_KEY = 'doctorScheduleConfig';
+const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+const createDefaultSlots = () => [
+  { id: `slot-${Date.now()}-1`, start: '10:00', end: '12:00' },
+  { id: `slot-${Date.now()}-2`, start: '13:00', end: '15:00' }
+];
+
+const createEmptySlot = () => ({
+  id: `slot-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+  start: '09:00',
+  end: '10:00'
+});
 
 const formatDateKey = (date) => {
   const year = date.getFullYear();
@@ -21,32 +34,100 @@ const parseStoredLeaveDates = () => {
   }
 };
 
-const createPatientKey = (patient) => {
-  const email = (patient.email || '').trim().toLowerCase();
-  if (email) return email;
-  const name = (patient.name || 'patient').trim().toLowerCase().split(' ').filter(Boolean).join('-');
-  const phone = (patient.phoneNumber || '').split(' ').join('');
-  return `${name}-${phone || 'na'}`;
+const sanitizeSlots = (slots) => {
+  if (!Array.isArray(slots)) return [];
+  return slots
+    .map((slot, index) => ({
+      id: slot?.id || `slot-${Date.now()}-${index}`,
+      start: slot?.start || '',
+      end: slot?.end || ''
+    }))
+    .filter((slot) => slot.start && slot.end && slot.start < slot.end);
+};
+
+const parseStoredScheduleConfig = () => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(DOCTOR_SCHEDULE_CONFIG_KEY) || '{}');
+    const storedDays = Array.isArray(parsed.defaultActiveDays)
+      ? parsed.defaultActiveDays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : [1, 2, 3, 4, 5];
+
+    const dayConfigs = Object.entries(parsed.dayConfigs || {}).reduce((acc, [dateKey, config]) => {
+      acc[dateKey] = {
+        isOffDay: Boolean(config?.isOffDay),
+        offReason: config?.offReason || '',
+        slots: sanitizeSlots(config?.slots)
+      };
+      return acc;
+    }, {});
+
+    return {
+      defaultSlots: sanitizeSlots(parsed.defaultSlots).length
+        ? sanitizeSlots(parsed.defaultSlots)
+        : createDefaultSlots(),
+      defaultActiveDays: storedDays.length ? storedDays : [1, 2, 3, 4, 5],
+      dayConfigs
+    };
+  } catch {
+    return {
+      defaultSlots: createDefaultSlots(),
+      defaultActiveDays: [1, 2, 3, 4, 5],
+      dayConfigs: {}
+    };
+  }
 };
 
 const DoctorSchedule = () => {
   const navigate = useNavigate();
-  const [approvedCountByDate, setApprovedCountByDate] = useState({});
-  const [allAppointments, setAllAppointments] = useState([]);
-  const [leaveDates, setLeaveDates] = useState([]);
-  const [patientSearch, setPatientSearch] = useState('');
-  const [selectedPatientKey, setSelectedPatientKey] = useState('');
+  const [totalAppointmentCountByDate, setTotalAppointmentCountByDate] = useState({});
+  const [defaultSlots, setDefaultSlots] = useState(() => createDefaultSlots());
+  const [defaultActiveDays, setDefaultActiveDays] = useState([1, 2, 3, 4, 5]);
+  const [dayConfigs, setDayConfigs] = useState({});
+  const [selectedDateKey, setSelectedDateKey] = useState(() => formatDateKey(new Date()));
   const [scheduleMonth, setScheduleMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
 
   useEffect(() => {
-    setLeaveDates(parseStoredLeaveDates());
+    const config = parseStoredScheduleConfig();
+    setDefaultSlots(config.defaultSlots);
+    setDefaultActiveDays(config.defaultActiveDays);
+    setDayConfigs(config.dayConfigs);
+
+    // Migrate old leave dates to explicit day-off configs.
+    const legacyLeaveDates = parseStoredLeaveDates();
+    if (legacyLeaveDates.length) {
+      setDayConfigs((prev) => {
+        const next = { ...prev };
+        legacyLeaveDates.forEach((dateKey) => {
+          if (!next[dateKey]) {
+            next[dateKey] = {
+              isOffDay: true,
+              offReason: 'Marked as off day',
+              slots: []
+            };
+          }
+        });
+        return next;
+      });
+      localStorage.removeItem(DOCTOR_LEAVE_DATES_KEY);
+    }
   }, []);
 
   useEffect(() => {
-    const loadApprovedCounts = async () => {
+    localStorage.setItem(
+      DOCTOR_SCHEDULE_CONFIG_KEY,
+      JSON.stringify({
+        defaultSlots: sanitizeSlots(defaultSlots),
+        defaultActiveDays,
+        dayConfigs
+      })
+    );
+  }, [defaultSlots, defaultActiveDays, dayConfigs]);
+
+  useEffect(() => {
+    const loadAppointmentCounts = async () => {
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
@@ -56,30 +137,129 @@ const DoctorSchedule = () => {
         });
 
         const data = Array.isArray(resp.data) ? resp.data : [];
-        setAllAppointments(data);
-        const approvedCounts = data.reduce((acc, item) => {
-          if ((item.status || '').toUpperCase() !== 'APPROVED' || !item.appointmentDate) return acc;
+        const totalCounts = data.reduce((acc, item) => {
+          if (!item.appointmentDate) return acc;
           acc[item.appointmentDate] = (acc[item.appointmentDate] || 0) + 1;
           return acc;
         }, {});
 
-        setApprovedCountByDate(approvedCounts);
+        setTotalAppointmentCountByDate(totalCounts);
       } catch (error) {
         console.error('Failed to load schedule appointment counts', error);
-        setAllAppointments([]);
       }
     };
 
-    loadApprovedCounts();
+    loadAppointmentCounts();
   }, []);
 
-  const toggleLeaveDate = (dateKey) => {
-    setLeaveDates((prev) => {
-      const exists = prev.includes(dateKey);
-      const next = exists ? prev.filter((item) => item !== dateKey) : [...prev, dateKey];
-      localStorage.setItem(DOCTOR_LEAVE_DATES_KEY, JSON.stringify(next));
+  const updateDefaultSlot = (slotId, field, value) => {
+    setDefaultSlots((prev) => prev.map((slot) => (slot.id === slotId ? { ...slot, [field]: value } : slot)));
+  };
+
+  const addDefaultSlot = () => {
+    setDefaultSlots((prev) => [...prev, createEmptySlot()]);
+  };
+
+  const removeDefaultSlot = (slotId) => {
+    setDefaultSlots((prev) => {
+      if (prev.length <= 1) return prev;
+      return prev.filter((slot) => slot.id !== slotId);
+    });
+  };
+
+  const toggleDefaultActiveDay = (weekday) => {
+    setDefaultActiveDays((prev) => {
+      if (prev.includes(weekday)) return prev.filter((day) => day !== weekday);
+      return [...prev, weekday].sort((first, second) => first - second);
+    });
+  };
+
+  const getDateObject = (dateKey) => {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return new Date(year, month - 1, day);
+  };
+
+  const selectedDateObject = useMemo(() => getDateObject(selectedDateKey), [selectedDateKey]);
+  const selectedDateConfig = dayConfigs[selectedDateKey] || { isOffDay: false, offReason: '', slots: [] };
+  const selectedWeekday = selectedDateObject.getDay();
+  const selectedUsesDefault = !dayConfigs[selectedDateKey];
+  const selectedEffectiveSlots = selectedDateConfig.slots.length
+    ? selectedDateConfig.slots
+    : defaultSlots;
+  const selectedHasDefault = defaultActiveDays.includes(selectedWeekday);
+
+  const updateDayConfig = (dateKey, updater) => {
+    setDayConfigs((prev) => {
+      const current = prev[dateKey] || { isOffDay: false, offReason: '', slots: [] };
+      const nextConfig = updater(current);
+
+      const shouldDelete =
+        !nextConfig.isOffDay &&
+        !nextConfig.offReason.trim() &&
+        sanitizeSlots(nextConfig.slots).length === 0;
+
+      if (shouldDelete) {
+        const next = { ...prev };
+        delete next[dateKey];
+        return next;
+      }
+
+      return {
+        ...prev,
+        [dateKey]: {
+          isOffDay: Boolean(nextConfig.isOffDay),
+          offReason: nextConfig.offReason || '',
+          slots: nextConfig.slots
+        }
+      };
+    });
+  };
+
+  const toggleSelectedOffDay = () => {
+    updateDayConfig(selectedDateKey, (current) => ({
+      ...current,
+      isOffDay: !current.isOffDay,
+      slots: current.isOffDay ? current.slots : []
+    }));
+  };
+
+  const setSelectedOffReason = (value) => {
+    updateDayConfig(selectedDateKey, (current) => ({ ...current, offReason: value }));
+  };
+
+  const setUseDefaultForSelectedDate = () => {
+    setDayConfigs((prev) => {
+      const next = { ...prev };
+      delete next[selectedDateKey];
       return next;
     });
+  };
+
+  const addSelectedSlot = () => {
+    updateDayConfig(selectedDateKey, (current) => ({
+      ...current,
+      isOffDay: false,
+      slots: [
+        ...((current.slots || []).length
+          ? current.slots
+          : defaultSlots.map((slot) => ({ ...slot, id: createEmptySlot().id }))),
+        createEmptySlot()
+      ]
+    }));
+  };
+
+  const updateSelectedSlot = (slotId, field, value) => {
+    updateDayConfig(selectedDateKey, (current) => ({
+      ...current,
+      slots: (current.slots || []).map((slot) => (slot.id === slotId ? { ...slot, [field]: value } : slot))
+    }));
+  };
+
+  const removeSelectedSlot = (slotId) => {
+    updateDayConfig(selectedDateKey, (current) => ({
+      ...current,
+      slots: (current.slots || []).filter((slot) => slot.id !== slotId)
+    }));
   };
 
   const calendarModel = useMemo(() => {
@@ -97,13 +277,20 @@ const DoctorSchedule = () => {
     for (let day = 1; day <= daysInMonth; day += 1) {
       const date = new Date(year, month, day);
       const dateKey = formatDateKey(date);
+      const weekday = date.getDay();
+      const dateConfig = dayConfigs[dateKey] || { isOffDay: false, slots: [] };
+      const customSlotCount = sanitizeSlots(dateConfig.slots).length;
+      const defaultSlotCount = defaultActiveDays.includes(weekday) ? sanitizeSlots(defaultSlots).length : 0;
+      const slotCount = dateConfig.isOffDay ? 0 : customSlotCount || defaultSlotCount;
+
       cells.push({
         type: 'day',
         key: dateKey,
         day,
         dateKey,
-        isBusy: leaveDates.includes(dateKey),
-        approvedCount: approvedCountByDate[dateKey] || 0,
+        isOffDay: Boolean(dateConfig.isOffDay),
+        slotCount,
+        totalAppointments: totalAppointmentCountByDate[dateKey] || 0,
         isToday: dateKey === formatDateKey(new Date())
       });
     }
@@ -112,46 +299,7 @@ const DoctorSchedule = () => {
       monthLabel: scheduleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       cells
     };
-  }, [scheduleMonth, leaveDates, approvedCountByDate]);
-
-  const allPatients = useMemo(() => {
-    const map = new Map();
-
-    allAppointments.forEach((item) => {
-      const name =
-        item.patientName ||
-        item.patient?.name ||
-        item.patient?.fullName ||
-        'Patient';
-      const email = item.patientEmail || item.patient?.email || '';
-      const phoneNumber = item.patientPhone || item.phoneNumber || item.patient?.phoneNumber || '';
-      const key = createPatientKey({ name, email, phoneNumber });
-
-      if (!map.has(key)) {
-        map.set(key, { key, name, email, phoneNumber });
-      }
-    });
-
-    return Array.from(map.values()).sort((first, second) => first.name.localeCompare(second.name));
-  }, [allAppointments]);
-
-  useEffect(() => {
-    if (!allPatients.length) {
-      setSelectedPatientKey('');
-      return;
-    }
-
-    setSelectedPatientKey((current) => {
-      if (current && allPatients.some((item) => item.key === current)) return current;
-      return allPatients[0].key;
-    });
-  }, [allPatients]);
-
-  const visiblePatients = useMemo(() => {
-    const query = patientSearch.trim().toLowerCase();
-    if (!query) return allPatients;
-    return allPatients.filter((item) => `${item.name} ${item.email} ${item.phoneNumber}`.toLowerCase().includes(query));
-  }, [allPatients, patientSearch]);
+  }, [scheduleMonth, dayConfigs, totalAppointmentCountByDate, defaultSlots, defaultActiveDays]);
 
   return (
     <div className="doctor-schedule-page">
@@ -189,29 +337,114 @@ const DoctorSchedule = () => {
 
       <div className="doctor-schedule-layout">
         <aside className="schedule-sidebar">
-          <input
-            className="schedule-search"
-            type="text"
-            placeholder="Search patient"
-            value={patientSearch}
-            onChange={(event) => setPatientSearch(event.target.value)}
-          />
+          <div className="default-schedule-card">
+            <div className="schedule-card-head">
+              <h4>Default Schedule Slots</h4>
+              <p>Applied automatically to selected weekdays.</p>
+            </div>
 
-          <div className="schedule-patient-list">
-            {visiblePatients.length === 0 ? (
-              <p className="schedule-muted">No patients found.</p>
+            <div className="slot-list">
+              {defaultSlots.map((slot) => (
+                <div className="slot-row" key={slot.id}>
+                  <input
+                    type="time"
+                    value={slot.start}
+                    onChange={(event) => updateDefaultSlot(slot.id, 'start', event.target.value)}
+                  />
+                  <span>to</span>
+                  <input
+                    type="time"
+                    value={slot.end}
+                    onChange={(event) => updateDefaultSlot(slot.id, 'end', event.target.value)}
+                  />
+                  <button type="button" className="slot-remove" onClick={() => removeDefaultSlot(slot.id)}>
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="schedule-actions-row">
+              <button type="button" className="ghost-btn" onClick={addDefaultSlot}>
+                Add Slot
+              </button>
+            </div>
+
+            <div className="weekday-toggle-grid">
+              {DAY_LABELS.map((day, index) => (
+                <label key={day}>
+                  <input
+                    type="checkbox"
+                    checked={defaultActiveDays.includes(index)}
+                    onChange={() => toggleDefaultActiveDay(index)}
+                  />
+                  {day}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="selected-day-card">
+            <div className="schedule-card-head">
+              <h4>Customize {selectedDateObject.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' })}</h4>
+              <p>{selectedUsesDefault ? 'Using default schedule' : 'Custom schedule override applied'}</p>
+            </div>
+
+            <div className="schedule-actions-row">
+              <button type="button" className="ghost-btn" onClick={setUseDefaultForSelectedDate}>
+                Use Default
+              </button>
+              <button type="button" className="ghost-btn" onClick={toggleSelectedOffDay}>
+                {selectedDateConfig.isOffDay ? 'Mark as Working Day' : 'Mark as Off Day'}
+              </button>
+            </div>
+
+            {selectedDateConfig.isOffDay ? (
+              <label className="offday-reason-field">
+                Off-day reason
+                <input
+                  type="text"
+                  placeholder="Ex: Personal leave"
+                  value={selectedDateConfig.offReason}
+                  onChange={(event) => setSelectedOffReason(event.target.value)}
+                />
+              </label>
             ) : (
-              visiblePatients.map((patient) => (
-                <button
-                  key={patient.key}
-                  type="button"
-                  className={`schedule-patient-item ${selectedPatientKey === patient.key ? 'active' : ''}`}
-                  onClick={() => setSelectedPatientKey(patient.key)}
-                >
-                  <strong>{patient.name}</strong>
-                  <span>{patient.email || 'No email'}</span>
-                </button>
-              ))
+              <>
+                {!selectedHasDefault && selectedUsesDefault ? (
+                  <p className="schedule-muted">No default slots set for {DAY_LABELS[selectedWeekday]}. Add custom slots below.</p>
+                ) : null}
+                <div className="slot-list">
+                  {selectedEffectiveSlots.map((slot) => (
+                    <div className="slot-row" key={slot.id}>
+                      <input
+                        type="time"
+                        value={slot.start}
+                        onChange={(event) => updateSelectedSlot(slot.id, 'start', event.target.value)}
+                        disabled={selectedUsesDefault}
+                      />
+                      <span>to</span>
+                      <input
+                        type="time"
+                        value={slot.end}
+                        onChange={(event) => updateSelectedSlot(slot.id, 'end', event.target.value)}
+                        disabled={selectedUsesDefault}
+                      />
+                      {selectedUsesDefault ? null : (
+                        <button type="button" className="slot-remove" onClick={() => removeSelectedSlot(slot.id)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                <div className="schedule-actions-row">
+                  <button type="button" className="ghost-btn" onClick={addSelectedSlot}>
+                    Add Custom Slot
+                  </button>
+                </div>
+              </>
             )}
           </div>
         </aside>
@@ -219,7 +452,7 @@ const DoctorSchedule = () => {
         <section className="calendar-card">
           <div className="calendar-head">
             <h3>{calendarModel.monthLabel}</h3>
-            <p>Click a date to toggle busy/day-off</p>
+            <p>Select a date to customize slots or mark as off day</p>
           </div>
 
           <div className="calendar-weekdays">
@@ -236,17 +469,18 @@ const DoctorSchedule = () => {
                 <button
                   key={cell.key}
                   type="button"
-                  className={`calendar-cell day ${cell.isBusy ? 'busy' : ''} ${cell.isToday ? 'today' : ''}`}
-                  onClick={() => toggleLeaveDate(cell.dateKey)}
-                  title={cell.isBusy ? 'Marked as Day Off' : 'Mark as Day Off'}
+                  className={`calendar-cell day ${cell.isOffDay ? 'busy' : ''} ${cell.isToday ? 'today' : ''} ${selectedDateKey === cell.dateKey ? 'selected' : ''}`}
+                  onClick={() => setSelectedDateKey(cell.dateKey)}
+                  title={cell.isOffDay ? 'Marked as Off Day' : 'Customize Day Schedule'}
                 >
                   <span className="day-number">{cell.day}</span>
-                  <span className="approved-count">{cell.approvedCount}</span>
-                  <span className="approved-label">Approved</span>
+                  <span className="slot-count-label">{cell.slotCount} {cell.slotCount === 1 ? 'slot' : 'slots'}</span>
+                  <span className="appointments-count-label">{cell.totalAppointments} {cell.totalAppointments === 1 ? 'appointment' : 'appointments'}</span>
                 </button>
               )
             )}
           </div>
+
         </section>
       </div>
     </div>
