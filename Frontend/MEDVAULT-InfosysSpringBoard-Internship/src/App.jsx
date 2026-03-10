@@ -8,6 +8,8 @@ import Otp from './components/Otp';
 import ForgetPass from './components/ForgetPass';
 import SetPass from './components/SetPass';
 import PatientDashboard from './components/PatientDashboard';
+import PatientAnalytics from './components/PatientAnalytics';
+import PatientRegistryFile from './components/PatientRegistryFile';
 import DoctorDashboard from './components/DoctorDashboard';
 import AdminDashboard from './components/AdminDashboard';
 import MasterAdminDashboard from './components/MasterAdminDashboard';
@@ -16,6 +18,8 @@ import DoctorProfile from './components/Profile/DoctorProfile';
 import PatientBookings from './components/PatientBookings';
 import DoctorBookings from './components/DoctorBookings';
 import DoctorAllAppointments from './components/DoctorAllAppointments';
+import DoctorSchedule from './components/DoctorSchedule';
+import DoctorReports from './components/DoctorReports';
 import PatientRatingsReviews from './components/PatientRatingsReviews';
 import DoctorRescheduleAppointment from './components/DoctorRescheduleAppointment';
 import DoctorPatientRegistry from './components/DoctorPatientRegistry';
@@ -57,6 +61,8 @@ function App() {
         {/* Main Application */}
         <Route path="/dashboard" element={<DashboardGate />} />
         <Route path="/patient-dashboard" element={<PatientDashboard />} />
+        <Route path="/patient-analytics" element={<PatientAnalytics />} />
+        <Route path="/patient-registry-file" element={<PatientRegistryFile />} />
         <Route path="/doctor-dashboard" element={<DoctorDashboard />} />
         <Route path="/admin-dashboard" element={<AdminDashboard />} />
         <Route path="/master-admin-dashboard" element={<MasterAdminDashboard />} />
@@ -65,6 +71,8 @@ function App() {
         <Route path="/patient-bookings" element={<PatientBookings />} />
         <Route path="/patient-ratings-reviews" element={<PatientRatingsReviews />} />
         <Route path="/doctor-bookings" element={<DoctorBookings />} />
+        <Route path="/doctor-schedule" element={<DoctorSchedule />} />
+        <Route path="/doctor-reports" element={<DoctorReports />} />
         <Route path="/doctor-appointments/all" element={<DoctorAllAppointments />} />
         <Route path="/doctor-appointments/reschedule" element={<DoctorRescheduleAppointment />} />
         <Route path="/doctor-patient-registry" element={<DoctorPatientRegistry />} />
