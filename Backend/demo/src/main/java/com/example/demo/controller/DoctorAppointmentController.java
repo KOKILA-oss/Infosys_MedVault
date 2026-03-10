@@ -46,6 +46,16 @@ public class DoctorAppointmentController {
         );
     }
 
+    @GetMapping("/patients")
+    public ResponseEntity<?> getDoctorPatients(Authentication authentication) {
+
+        String doctorEmail = authentication.getName();
+
+        return ResponseEntity.ok(
+                appointmentService.getDoctorPatientRegistry(doctorEmail)
+        );
+    }
+
     // Update status
     @PutMapping("/{id}/status")
     public ResponseEntity<?> updateStatus(

@@ -2,6 +2,8 @@ package com.example.demo.service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
 import org.slf4j.Logger;
@@ -10,9 +12,10 @@ import org.slf4j.LoggerFactory;
 import com.example.demo.dto.AppointmentRequest;
 import com.example.demo.dto.AppointmentResponse;
 import com.example.demo.dto.AppointmentStatus;
+import com.example.demo.dto.DoctorPatientRegistryResponse;
 import com.example.demo.dto.RescheduleRequest;
 import com.example.demo.entity.Appointment;
-
+import com.example.demo.entity.PatientProfile;
 import com.example.demo.entity.User;
 import com.example.demo.repository.AppointmentRepository;
 import com.example.demo.repository.UserRepository;
@@ -317,6 +320,95 @@ public List<AppointmentResponse> getPatientAppointments(String patientEmail) {
             .stream()
             .map(this::mapToResponse)
             .toList();
+}
+
+public List<DoctorPatientRegistryResponse> getDoctorPatientRegistry(String doctorEmail) {
+
+    User doctor = userRepository.findByEmail(doctorEmail)
+            .orElseThrow(() -> new RuntimeException("Doctor not found"));
+
+    if (!doctor.getRole().name().equals("DOCTOR")) {
+        throw new RuntimeException("Unauthorized access");
+    }
+
+    List<Appointment> appointments = appointmentRepository.findByDoctor(doctor);
+
+    Map<Long, List<Appointment>> appointmentsByPatient = appointments.stream()
+            .filter(appointment -> appointment.getPatient() != null)
+            .collect(Collectors.groupingBy(appointment -> appointment.getPatient().getId()));
+
+    return appointmentsByPatient.values().stream()
+            .map(this::mapToDoctorPatientRegistryResponse)
+            .sorted((left, right) -> {
+                String leftName = left.getName() == null ? "" : left.getName().toLowerCase();
+                String rightName = right.getName() == null ? "" : right.getName().toLowerCase();
+                return leftName.compareTo(rightName);
+            })
+            .toList();
+}
+
+private DoctorPatientRegistryResponse mapToDoctorPatientRegistryResponse(List<Appointment> patientAppointments) {
+    Appointment latestAppointment = patientAppointments.stream()
+            .sorted((left, right) -> {
+                LocalDate leftDate = left.getAppointmentDate();
+                LocalDate rightDate = right.getAppointmentDate();
+
+                if (leftDate == null && rightDate == null) {
+                    return 0;
+                }
+                if (leftDate == null) {
+                    return 1;
+                }
+                if (rightDate == null) {
+                    return -1;
+                }
+
+                int dateCompare = rightDate.compareTo(leftDate);
+                if (dateCompare != 0) {
+                    return dateCompare;
+                }
+
+                if (left.getAppointmentTime() == null && right.getAppointmentTime() == null) {
+                    return 0;
+                }
+                if (left.getAppointmentTime() == null) {
+                    return 1;
+                }
+                if (right.getAppointmentTime() == null) {
+                    return -1;
+                }
+
+                return right.getAppointmentTime().compareTo(left.getAppointmentTime());
+            })
+            .findFirst()
+            .orElseThrow(() -> new RuntimeException("No patient appointments found"));
+
+    User patient = latestAppointment.getPatient();
+    PatientProfile patientProfile = patient.getPatientProfile();
+
+    DoctorPatientRegistryResponse response = new DoctorPatientRegistryResponse();
+    response.setPatientId(patient.getId());
+    response.setName(patient.getName());
+    response.setEmail(patient.getEmail());
+    response.setAppointmentCount(patientAppointments.size());
+    response.setLatestAppointmentDate(latestAppointment.getAppointmentDate());
+    response.setLatestAppointmentStatus(
+            latestAppointment.getStatus() == null ? null : latestAppointment.getStatus().name()
+    );
+
+    if (patientProfile != null) {
+        response.setPhoneNumber(patientProfile.getPhoneNumber());
+        response.setGender(patientProfile.getGender());
+        response.setBloodGroup(patientProfile.getBloodGroup());
+        response.setHeight(patientProfile.getHeight());
+        response.setWeight(patientProfile.getWeight());
+        response.setSugarLevel(patientProfile.getSugarLevel());
+        response.setAddress(patientProfile.getAddress());
+        response.setAllergies(patientProfile.getAllergies());
+        response.setEmergencyContact(patientProfile.getEmergencyContact());
+    }
+
+    return response;
 }
 
 }
