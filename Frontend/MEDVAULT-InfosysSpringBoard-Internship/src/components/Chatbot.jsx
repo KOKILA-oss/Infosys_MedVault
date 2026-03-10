@@ -4,6 +4,7 @@ import axios from "axios";
 const Chatbot = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
+  const [isMinimized, setIsMinimized] = useState(false);
 
   const extractBotText = (data) => {
     if (typeof data === "string") {
@@ -23,77 +24,94 @@ const Chatbot = () => {
   };
 
   const sendMessage = async () => {
-  if (!message) return;
+    if (!message) return;
 
-  const userMsg = { sender: "user", text: message };
-  setMessages(prev => [...prev, userMsg]);
+    const userMsg = { sender: "user", text: message };
+    setMessages((prev) => [...prev, userMsg]);
 
-  try {
-    const res = await axios.post(
-  "http://localhost:8080/chat",
-  { message: message },
-  {
-    headers: {
-      Authorization: `Bearer ${localStorage.getItem("token")}`
+    try {
+      const res = await axios.post(
+        "http://localhost:8080/chat",
+        { message },
+        {
+          headers: {
+            Authorization: `Bearer ${localStorage.getItem("token")}`
+          }
+        }
+      );
+
+      const botText = extractBotText(res.data);
+      const botMsg = { sender: "bot", text: botText };
+      setMessages((prev) => [...prev, botMsg]);
+    } catch (error) {
+      console.error(error);
+      const botMsg = {
+        sender: "bot",
+        text: "Something went wrong. Please try again."
+      };
+      setMessages((prev) => [...prev, botMsg]);
     }
+
+    setMessage("");
+  };
+
+  if (isMinimized) {
+    return (
+      <button
+        type="button"
+        style={styles.minimizedButton}
+        onClick={() => setIsMinimized(false)}
+        aria-label="Open chatbot"
+        title="Open chatbot"
+      >
+        Chat
+      </button>
+    );
   }
-);
-
-    const botText = extractBotText(res.data);
-
-    const botMsg = {
-      sender: "bot",
-      text: botText
-    };
-
-    setMessages(prev => [...prev, botMsg]);
-
-  } catch (error) {
-    console.error(error);
-
-    const botMsg = {
-      sender: "bot",
-      text: "Something went wrong. Please try again."
-    };
-
-    setMessages(prev => [...prev, botMsg]);
-  }
-
-  setMessage("");
-};
 
   return (
-  <div style={styles.chatContainer}>
-    
-    <div style={styles.chatBox}>
-      {messages.map((msg, index) => (
-        <div
-          key={index}
-          style={{
-            textAlign: msg.sender === "user" ? "right" : "left",
-            marginBottom: "8px"
-          }}
+    <div style={styles.chatContainer}>
+      <div style={styles.chatHeader}>
+        <strong>MedVault Assistant</strong>
+        <button
+          type="button"
+          style={styles.minimizeButton}
+          onClick={() => setIsMinimized(true)}
+          aria-label="Minimize chatbot"
+          title="Minimize"
         >
-          <p>{msg.text}</p>
-        </div>
-      ))}
+          _
+        </button>
+      </div>
+
+      <div style={styles.chatBox}>
+        {messages.map((msg, index) => (
+          <div
+            key={index}
+            style={{
+              textAlign: msg.sender === "user" ? "right" : "left",
+              marginBottom: "8px"
+            }}
+          >
+            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.text}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={styles.inputContainer}>
+        <input
+          style={styles.input}
+          value={message}
+          onChange={(e) => setMessage(e.target.value)}
+          placeholder="Ask something..."
+        />
+
+        <button style={styles.button} onClick={sendMessage}>
+          Send
+        </button>
+      </div>
     </div>
-
-    <div style={styles.inputContainer}>
-      <input
-        style={styles.input}
-        value={message}
-        onChange={(e) => setMessage(e.target.value)}
-        placeholder="Ask something..."
-      />
-
-      <button style={styles.button} onClick={sendMessage}>
-        Send
-      </button>
-    </div>
-
-  </div>
-);
+  );
 };
 
 const styles = {
@@ -110,26 +128,51 @@ const styles = {
     display: "flex",
     flexDirection: "column"
   },
-
+  chatHeader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderBottom: "1px solid #eee",
+    padding: "10px 12px",
+    fontSize: "14px"
+  },
+  minimizeButton: {
+    border: "none",
+    background: "transparent",
+    cursor: "pointer",
+    fontSize: "16px",
+    lineHeight: 1,
+    color: "#444"
+  },
+  minimizedButton: {
+    position: "fixed",
+    bottom: "20px",
+    right: "20px",
+    border: "none",
+    borderRadius: "999px",
+    background: "#0f62fe",
+    color: "white",
+    padding: "10px 14px",
+    boxShadow: "0 4px 16px rgba(15,98,254,0.35)",
+    cursor: "pointer",
+    zIndex: 9999
+  },
   chatBox: {
     flex: 1,
     overflowY: "auto",
     padding: "10px",
     fontSize: "14px"
   },
-
   inputContainer: {
     display: "flex",
     borderTop: "1px solid #eee"
   },
-
   input: {
     flex: 1,
     border: "none",
     padding: "10px",
     outline: "none"
   },
-
   button: {
     padding: "10px 14px",
     border: "none",

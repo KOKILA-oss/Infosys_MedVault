@@ -19,40 +19,35 @@ public class SecurityConfig {
     }
 
     @Bean
-public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
 
-    http
-        .cors(cors -> {})
-        .csrf(csrf -> csrf.disable())
-        .authorizeHttpRequests(auth -> auth
+        http
+            .cors(cors -> {
+            })
+            .csrf(csrf -> csrf.disable())
+            .authorizeHttpRequests(auth -> auth
 
-    .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
 
-    // Public
-    .requestMatchers(
-            "/api/auth/register/**",
-            "/api/auth/login/**",
-            "/api/auth/forgot-password/**",
-            "/api/notifications/**",
-            "/chat/**"
-    ).permitAll()
+                .requestMatchers(
+                        "/api/auth/register/**",
+                        "/api/auth/login/**",
+                        "/api/auth/forgot-password/**",
+                        "/api/notifications/**",
+                        "/chat/**"
+                ).permitAll()
 
-        // 👇 Allow patients to access their appointment endpoints
-        .requestMatchers(
-            "/api/patient/appointments/**",
-            "/api/appointments/available"
-        ).hasRole("PATIENT")
+                .requestMatchers("/api/patient/**").hasRole("PATIENT")
+                .requestMatchers("/api/appointments/available").hasRole("PATIENT")
 
-    // Admin
-    .requestMatchers("/api/admin/**").hasRole("ADMIN")
+                .requestMatchers("/api/admin/**").hasRole("ADMIN")
 
-    // Doctor endpoints (after patient special cases)
-    .requestMatchers("/api/doctor/**").hasRole("DOCTOR")
+                .requestMatchers("/api/doctor/**").hasRole("DOCTOR")
 
-    .anyRequest().authenticated()
-)
-        .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                .anyRequest().authenticated()
+            )
+            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
-    return http.build();
-}
+        return http.build();
+    }
 }

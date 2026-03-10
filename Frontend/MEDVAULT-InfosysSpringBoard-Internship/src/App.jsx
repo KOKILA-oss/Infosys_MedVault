@@ -22,6 +22,8 @@ import DoctorPatientRegistry from './components/DoctorPatientRegistry';
 import AdminManageDoctors from './components/AdminManageDoctors';
 import AdminManagePatients from './components/AdminManagePatients';
 import NotificationsPage from './components/NotificationsPage';
+import PatientMedicalRecords from './components/PatientMedicalRecords';
+import DoctorMedicalRecords from './components/DoctorMedicalRecords';
 import './index.css';
 import Chatbot from './components/Chatbot';
 
@@ -69,6 +71,8 @@ function App() {
         <Route path="/admin-doctors" element={<AdminManageDoctors />} />
         <Route path="/admin-patients" element={<AdminManagePatients />} />
         <Route path="/notifications" element={<NotificationsPage />} />
+        <Route path="/patient-medical-records" element={<PatientMedicalRecords />} />
+        <Route path="/doctor-medical-records" element={<DoctorMedicalRecords />} />
         
         
         <Route path="*" element={<Navigate to="/" replace />} />

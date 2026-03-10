@@ -27,8 +27,10 @@ const formatHeading = (text = '') => {
 
 function writeNotificationsLocal(list) {
   try {
+    const unread = list.filter(n => !(n.read === true)).length;
     localStorage.setItem('notifications', JSON.stringify(list));
-    localStorage.setItem('unreadNotificationCount', String(list.filter(n => !(n.read === true)).length));
+    localStorage.setItem('unreadNotificationCount', String(unread));
+    window.dispatchEvent(new CustomEvent('notifications:updated', { detail: { unread } }));
   } catch  {
     // ignore
   }
@@ -60,7 +62,7 @@ const NotificationsPage = () => {
 
   const [notifications, setNotifications] = useState(() => readNotificationsLocal());
 
-  useEffect(() => {
+useEffect(() => {
   const markAll = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -69,6 +71,10 @@ const NotificationsPage = () => {
       await axios.post('/api/notifications/mark-all-read', null, {
         headers: { Authorization: `Bearer ${token}` }
       });
+      const resp = await axios.get('/api/notifications', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNotifications(resp.data || []);
     } catch (err) {
       console.error(err);
     }
@@ -117,6 +123,7 @@ const NotificationsPage = () => {
 
   useEffect(() => {
     localStorage.setItem('unreadNotificationCount', String(unreadCount));
+    window.dispatchEvent(new CustomEvent('notifications:updated', { detail: { unread: unreadCount } }));
   }, [unreadCount]);
 
   const handleMarkAllRead = () => {

@@ -6,7 +6,6 @@ const AdminDashboard = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState('light');
   const [userName] = useState('Admin Console');
-  const [showStats, setShowStats] = useState(true);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -246,40 +245,6 @@ const AdminDashboard = () => {
           </div>
         </div>
       </main>
-
-      {showStats && (
-        <aside className="health-stats">
-          <button
-            type="button"
-            className="stats-close"
-            aria-label="Minimize quick summary"
-            onClick={() => setShowStats(false)}
-          >
-            ✕
-          </button>
-          <div className="stat-item">
-            <div className="stat-icon vital-good">✅</div>
-            <div className="stat-info">
-              <span className="stat-label">Doctor Approvals</span>
-              <span className="stat-value">5 Pending</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">🧑‍⚕️</div>
-            <div className="stat-info">
-              <span className="stat-label">Active Doctors</span>
-              <span className="stat-value">42</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">🔒</div>
-            <div className="stat-info">
-              <span className="stat-label">Security Alerts</span>
-              <span className="stat-value">2</span>
-            </div>
-          </div>
-        </aside>
-      )}
     </div>
   );
 };

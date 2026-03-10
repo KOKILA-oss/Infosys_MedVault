@@ -1,0 +1,104 @@
+.doctor-records-page {
+  padding: 24px;
+  background: #f4f7fb;
+  min-height: 100vh;
+}
+
+.records-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.records-card {
+  background: #fff;
+  border: 1px solid #dce4f2;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.controls-card {
+  display: flex;
+  gap: 12px;
+  align-items: end;
+  flex-wrap: wrap;
+}
+
+.controls-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 220px;
+}
+
+.controls-card select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cfd7e6;
+  border-radius: 8px;
+}
+
+.list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-row {
+  border: 1px solid #e4e9f2;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.list-row p,
+.list-row small {
+  margin: 2px 0;
+}
+
+.primary-btn,
+.ghost-btn {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: #0b74de;
+  color: #fff;
+}
+
+.ghost-btn {
+  background: #f3f6fc;
+  color: #123;
+  border-color: #d5deee;
+}
+
+.error-box {
+  background: #ffeef0;
+  border: 1px solid #ffcdd4;
+  color: #8a1f2b;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 768px) {
+  .doctor-records-page {
+    padding: 14px;
+  }
+
+  .records-header,
+  .list-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

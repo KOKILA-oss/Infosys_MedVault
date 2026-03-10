@@ -7,39 +7,51 @@ const PatientDashboard = () => {
   const navigate = useNavigate();
   const [theme, setTheme] = useState('light');
   const [userName, setUserName] = useState('');
-  const [showStats, setShowStats] = useState(true);
   const [appointments, setAppointments] = useState([]);
+  const [reports, setReports] = useState([]);
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
-   useEffect(() => {
-    const fetchPatientProfile = async () => {
+  useEffect(() => {
+    const storedName = localStorage.getItem('userName');
+    const storedEmail = localStorage.getItem('userEmail');
+    if (storedName && storedName.trim()) {
+      setUserName(storedName.trim());
+      return;
+    }
+    if (storedEmail && storedEmail.includes('@')) {
+      setUserName(storedEmail.split('@')[0]);
+      return;
+    }
+    setUserName('Patient');
+  }, []);
+
+  useEffect(() => {
+    const fetchUnreadCount = async () => {
       try {
         const token = localStorage.getItem('token');
         if (!token) return;
 
-        const response = await axios.get('/api/patient/profile', {
+        const resp = await axios.get('/api/notifications/unread-count', {
           headers: { Authorization: `Bearer ${token}` }
         });
-
-        const patient = response.data;
-
-       setUserName(
-  patient?.user?.name ||
-  patient?.name ||
-  patient?.fullName ||
-  'Patient'
-);
-
-
-      } catch (error) {
-        console.error('Failed to fetch patient profile', error);
-        setUserName('Patient');
+        setUnreadNotificationCount(Number(resp.data || 0));
+      } catch (err) {
+        console.error('Failed to fetch unread count', err);
       }
     };
 
-    fetchPatientProfile();
+    const onNotificationsUpdated = () => fetchUnreadCount();
+    window.addEventListener('notifications:updated', onNotificationsUpdated);
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 10000);
+
+    return () => {
+      window.removeEventListener('notifications:updated', onNotificationsUpdated);
+      clearInterval(interval);
+    };
   }, []);
 
-  useEffect(() => {
+useEffect(() => {
   const loadAppointments = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -61,6 +73,30 @@ const PatientDashboard = () => {
 
   loadAppointments();
 }, []);
+
+  useEffect(() => {
+    const loadReports = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const resp = await axios.get('/api/patient/records', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const data = Array.isArray(resp.data) ? resp.data : [];
+        const sorted = data
+          .slice()
+          .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0));
+        setReports(sorted);
+      } catch (error) {
+        console.error('Failed to load reports', error);
+        setReports([]);
+      }
+    };
+
+    loadReports();
+  }, []);
 
 
   useEffect(() => {
@@ -106,7 +142,7 @@ const PatientDashboard = () => {
     });
   };
 
-  const formatTimeLabel = (timeValue) => {
+const formatTimeLabel = (timeValue) => {
   if (!timeValue) return '';
   const [hours, minutes] = timeValue.split(':');
   const date = new Date();
@@ -116,6 +152,39 @@ const PatientDashboard = () => {
     minute: '2-digit'
   });
 };
+
+  const formatReportDate = (dateValue) => {
+    if (!dateValue) return 'Uploaded recently';
+    const date = new Date(dateValue);
+    if (Number.isNaN(date.getTime())) return 'Uploaded recently';
+    return `Uploaded ${date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric'
+    })}`;
+  };
+
+  const onDownloadReport = async (recordId, fileName) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await axios.get(`/api/patient/records/${recordId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+
+      const blobUrl = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = blobUrl;
+      link.download = fileName || 'record';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      console.error('Failed to download report', error);
+    }
+  };
 
 
 
@@ -141,14 +210,7 @@ const PatientDashboard = () => {
   }))
   .filter(item => item.dateTime >= new Date())
   .sort((a, b) => a.dateTime - b.dateTime)[0];
-
-  const pendingNotificationCount = appointments.filter((item) => {
-    const normalizedStatus = (item.status || '').toUpperCase();
-    return ['PENDING', 'RESCHEDULED', 'CANCELED', 'CANCELLED'].includes(normalizedStatus);
-  }).length + (nextAppointment ? 1 : 0);
-
-  const unreadNotificationCount = Number(localStorage.getItem('unreadNotificationCount') || 0) || pendingNotificationCount;
-
+  const latestReport = reports[0];
 
   const dashboardCards = [
     {
@@ -177,7 +239,7 @@ const PatientDashboard = () => {
       title: 'Reports',
       icon: '📄',
       color: '#9b59b6',
-      link: '#reports'
+      link: '/patient-medical-records'
     },
     {
       id: 4,
@@ -359,8 +421,10 @@ const PatientDashboard = () => {
                   <div className="summary-icon" aria-hidden="true">📄</div>
                   <div>
                     <p className="summary-label">Latest Report</p>
-                    <h3 className="summary-value">Blood Work</h3>
-                    <span className="summary-meta">Uploaded 2 days ago</span>
+                    <h3 className="summary-value">{latestReport?.fileName || 'No reports yet'}</h3>
+                    <span className="summary-meta">
+                      {latestReport ? formatReportDate(latestReport.createdAt) : 'Upload your first report'}
+                    </span>
                   </div>
                 </div>
                 <div className="summary-card">
@@ -504,43 +568,41 @@ const PatientDashboard = () => {
                   <h2 className="section-title">Reports</h2>
                   <p className="section-subtitle">Latest uploads and quick access</p>
                 </div>
-                <button className="link-pill">Upload Report</button>
+                <button className="link-pill" onClick={() => handleCardAction('/patient-medical-records')}>Upload Report</button>
               </div>
 
               <div className="reports-list">
-                <div className="report-item">
-                  <div>
-                    <h3>Complete Blood Count</h3>
-                    <p>Lab • Uploaded Feb 10</p>
+                {reports.length === 0 ? (
+                  <div className="report-item">
+                    <div>
+                      <h3>No reports uploaded yet</h3>
+                      <p>Upload a report from the Medical Records section.</p>
+                    </div>
+                    <div className="report-actions">
+                      <button className="primary-btn" onClick={() => handleCardAction('/patient-medical-records')}>
+                        Upload Report
+                      </button>
+                    </div>
                   </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Chest X-Ray</h3>
-                    <p>X-ray • Uploaded Feb 5</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Prescription Update</h3>
-                    <p>Prescription • Uploaded Jan 30</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status muted">Processing</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Download</button>
-                  </div>
-                </div>
+                ) : (
+                  reports.slice(0, 3).map((report) => (
+                    <div className="report-item" key={report.id}>
+                      <div>
+                        <h3>{report.fileName || report.title || 'Medical Report'}</h3>
+                        <p>{report.category || 'REPORT'} | {formatReportDate(report.createdAt)}</p>
+                      </div>
+                      <div className="report-actions">
+                        <span className="report-status">Ready</span>
+                        <button className="ghost-btn" onClick={() => handleCardAction('/patient-medical-records')}>
+                          View
+                        </button>
+                        <button className="primary-btn" onClick={() => onDownloadReport(report.id, report.fileName)}>
+                          Download
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </section>
 
@@ -599,42 +661,10 @@ const PatientDashboard = () => {
         </div>
       </main>
 
-      {/* Health Stats Bar */}
-      {showStats && (
-        <aside className="health-stats">
-          <button
-            type="button"
-            className="stats-close"
-            aria-label="Minimize quick summary"
-            onClick={() => setShowStats(false)}
-          >
-            ✕
-          </button>
-          <div className="stat-item">
-            <div className="stat-icon vital-good">💚</div>
-            <div className="stat-info">
-              <span className="stat-label">Overall Health</span>
-              <span className="stat-value">Good</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">🩺</div>
-            <div className="stat-info">
-              <span className="stat-label">Last Checkup</span>
-              <span className="stat-value">2 weeks ago</span>
-            </div>
-          </div>
-          <div className="stat-item">
-            <div className="stat-icon">💊</div>
-            <div className="stat-info">
-              <span className="stat-label">Medications</span>
-              <span className="stat-value">3 Active</span>
-            </div>
-          </div>
-        </aside>
-      )}
+
     </div>
   );
 };
 
 export default PatientDashboard;
+

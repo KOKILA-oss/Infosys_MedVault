@@ -35,7 +35,7 @@ const DoctorDashboard = () => {
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
-  useEffect(() => {
+useEffect(() => {
   const fetchUnreadCount = async () => {
     try {
       const token = localStorage.getItem('token');
@@ -52,11 +52,16 @@ const DoctorDashboard = () => {
   };
 
   fetchUnreadCount();
+  const onNotificationsUpdated = () => fetchUnreadCount();
+  window.addEventListener('notifications:updated', onNotificationsUpdated);
 
   // Optional: refresh every 10 seconds
   const interval = setInterval(fetchUnreadCount, 10000);
 
-  return () => clearInterval(interval);
+  return () => {
+    window.removeEventListener('notifications:updated', onNotificationsUpdated);
+    clearInterval(interval);
+  };
 }, []);
 
   useEffect(() => {
@@ -215,7 +220,7 @@ const DoctorDashboard = () => {
       title: 'Reports',
       icon: '📄',
       color: '#4f46e5',
-      link: '#reports'
+      link: '/doctor-medical-records'
     },
     {
       id: 6,
@@ -586,7 +591,7 @@ const DoctorDashboard = () => {
                   <h2 className="section-title">Reports</h2>
                   <p className="section-subtitle">Pending reviews and uploads</p>
                 </div>
-                <button className="link-pill">Create Report</button>
+                <button className="link-pill" onClick={() => handleCardAction('/doctor-medical-records')}>Create Report</button>
               </div>
 
               <div className="reports-list">

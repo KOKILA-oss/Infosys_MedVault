@@ -1,0 +1,138 @@
+.patient-records-page {
+  padding: 24px;
+  background: #f4f7fb;
+  min-height: 100vh;
+}
+
+.records-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.records-header h1 {
+  margin: 0;
+}
+
+.records-header p {
+  margin: 6px 0 0;
+  color: #5a6475;
+}
+
+.records-card {
+  background: #fff;
+  border: 1px solid #dce4f2;
+  border-radius: 14px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.records-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+}
+
+.records-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.full-width {
+  grid-column: 1 / -1;
+}
+
+.records-grid input,
+.records-grid select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid #cfd7e6;
+  border-radius: 8px;
+}
+
+.section-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.list-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-row {
+  border: 1px solid #e4e9f2;
+  border-radius: 10px;
+  padding: 10px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.list-row p,
+.list-row small {
+  margin: 2px 0;
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.primary-btn,
+.ghost-btn,
+.danger-btn {
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+.primary-btn {
+  background: #0b74de;
+  color: #fff;
+}
+
+.ghost-btn {
+  background: #f3f6fc;
+  color: #123;
+  border-color: #d5deee;
+}
+
+.danger-btn {
+  background: #ffecef;
+  color: #8d1d28;
+  border-color: #ffc7ce;
+}
+
+.error-box {
+  background: #ffeef0;
+  border: 1px solid #ffcdd4;
+  color: #8a1f2b;
+  padding: 10px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+}
+
+@media (max-width: 768px) {
+  .patient-records-page {
+    padding: 14px;
+  }
+
+  .records-header,
+  .section-row,
+  .list-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

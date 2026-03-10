@@ -1,16 +1,33 @@
 package com.example.demo.service;
 
+import java.time.DateTimeException;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
+import java.time.format.TextStyle;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.example.demo.dto.AppointmentStatus;
 import com.example.demo.entity.Appointment;
+import com.example.demo.entity.Role;
 import com.example.demo.entity.User;
 import com.example.demo.repository.AppointmentRepository;
 import com.example.demo.repository.UserRepository;
@@ -23,6 +40,9 @@ public class ChatService {
     private String apiKey;
 
     private static final String URL = "https://openrouter.ai/api/v1/chat/completions";
+    private static final Pattern DATE_DMY_PATTERN = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b");
+    private static final Pattern TIME_12H_PATTERN = Pattern.compile("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TIME_24H_PATTERN = Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -33,48 +53,47 @@ public class ChatService {
     @Autowired
     private AppointmentRepository appointmentRepository;
 
-
-    private RestTemplate restTemplate = new RestTemplate();
+    private final Map<String, Boolean> awaitingBookingDetailsByEmail = new ConcurrentHashMap<>();
+    private final RestTemplate restTemplate = new RestTemplate();
 
     public String getChatResponse(String userMessage, String token) {
-
         try {
+            if (token == null || token.isBlank()) {
+                return "Please log in again and retry.";
+            }
 
             String email = jwtUtil.extractEmail(token);
             User patient = userRepository.findByEmail(email).orElse(null);
-
             if (patient == null) {
                 return "User not found.";
             }
 
-            // STEP 1: Detect booking intent
-            if (userMessage.toLowerCase().contains("book")) {
-                return "Sure. Please provide doctor name, date and time.";
-            }
-
-            // STEP 2: Detect doctor selection
-            if (userMessage.toLowerCase().contains("kritii")) {
-
-                return bookAppointment(patient, "kritii",
-                        LocalDate.of(2026, 3, 21),
-                        LocalTime.of(10, 0));
-            }
-
-            // STEP 3: If user asks for appointments
-            if (userMessage.toLowerCase().contains("appointment")) {
+            String normalized = normalize(userMessage);
+            if (isUpcomingAppointmentsIntent(normalized)) {
                 return getAppointments(patient);
             }
 
-            // STEP 4: Otherwise ask AI
-            return askAI(userMessage);
+            boolean bookingIntent = isBookingIntent(normalized);
+            boolean awaitingDetails = awaitingBookingDetailsByEmail.getOrDefault(email, false);
+            if (bookingIntent || awaitingDetails) {
+                BookingInput parsed = parseBookingInput(userMessage);
+                if (parsed.isComplete()) {
+                    awaitingBookingDetailsByEmail.put(email, false);
+                    return bookAppointment(patient, parsed.doctorName, parsed.date, parsed.time);
+                }
 
+                awaitingBookingDetailsByEmail.put(email, true);
+                return "Please provide all 3 details in one line: doctor name, date, and time. "
+                        + "Example: Aashish 28/03/2026 3:00 PM";
+            }
+
+            return askAI(userMessage);
         } catch (Exception e) {
             return "Unable to process your request right now.";
         }
     }
 
     private String askAI(String userMessage) {
-
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
@@ -85,8 +104,7 @@ public class ChatService {
           "messages":[
             {
               "role":"system",
-              "content":"You are MedVault healthcare assistant. 
-              Help patients understand appointments but do not perform bookings."
+              "content":"You are MedVault healthcare assistant. Help patients understand appointments but do not perform bookings."
             },
             {
               "role":"user",
@@ -97,72 +115,297 @@ public class ChatService {
         """.formatted(userMessage);
 
         HttpEntity<String> entity = new HttpEntity<>(body, headers);
-
-        ResponseEntity<String> response =
-                restTemplate.postForEntity(URL, entity, String.class);
-
+        ResponseEntity<String> response = restTemplate.postForEntity(URL, entity, String.class);
         return response.getBody();
     }
 
     private String getAppointments(User patient) {
+        List<Appointment> appointments = new ArrayList<>(
+                appointmentRepository.findByPatientAndAppointmentDateGreaterThanEqual(patient, LocalDate.now())
+        );
 
-        List<Appointment> appointments =
-                appointmentRepository
-                        .findByPatientAndAppointmentDateGreaterThanEqual(
-                                patient,
-                                LocalDate.now());
+        appointments.sort(
+                Comparator.comparing(Appointment::getAppointmentDate)
+                        .thenComparing(Appointment::getAppointmentTime)
+        );
 
         if (appointments.isEmpty()) {
             return "You have no upcoming appointments.";
         }
 
         StringBuilder builder = new StringBuilder();
-
         builder.append("Here are your upcoming appointments:\n");
 
         int i = 1;
-
         for (Appointment appointment : appointments) {
+            String doctorName = cleanupDoctorName(appointment.getDoctor().getName());
+            String day = appointment.getAppointmentDate().getDayOfWeek()
+                    .getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
+            String date = appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
+            String time = appointment.getAppointmentTime().format(DateTimeFormatter.ofPattern("hh:mm a"));
+            String status = appointment.getStatus() == null ? "PENDING" : appointment.getStatus().name();
 
             builder.append(i++)
                     .append(". Dr. ")
-                    .append(appointment.getDoctor().getName())
-                    .append(" on ")
-                    .append(appointment.getAppointmentDate())
+                    .append(doctorName)
+                    .append(" - ")
+                    .append(day)
+                    .append(", ")
+                    .append(date)
                     .append(" at ")
-                    .append(appointment.getAppointmentTime())
-                    .append("\n");
+                    .append(time)
+                    .append(" (")
+                    .append(status)
+                    .append(")\n");
         }
 
         return builder.toString();
     }
 
-    private String bookAppointment(User patient,
-                               String doctorName,
-                               LocalDate date,
-                               LocalTime time) {
+    private String bookAppointment(User patient, String doctorName, LocalDate date, LocalTime time) {
+        User doctor = findDoctorByName(doctorName);
+        if (doctor == null) {
+            return "Doctor not found.";
+        }
 
-    // Find doctor user
-    User doctor = userRepository.findByNameIgnoreCase(doctorName);
+        if (date.isBefore(LocalDate.now())) {
+            return "Cannot book in the past. Please provide a future date.";
+        }
 
-    if (doctor == null) {
-        return "Doctor not found.";
+        if (appointmentRepository.existsByDoctorAndAppointmentDateAndAppointmentTime(doctor, date, time)) {
+            return "That slot is already booked. Please choose another time.";
+        }
+
+        Appointment appointment = new Appointment();
+        appointment.setPatient(patient);
+        appointment.setDoctor(doctor);
+        appointment.setAppointmentDate(date);
+        appointment.setAppointmentTime(time);
+        appointment.setStatus(AppointmentStatus.PENDING);
+        appointment.setCreatedAt(LocalDateTime.now());
+        appointment.setReason("Booked via chatbot");
+
+        appointmentRepository.save(appointment);
+
+        return "Appointment booked successfully with Dr. "
+                + cleanupDoctorName(doctor.getName())
+                + " on "
+                + date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
+                + " at "
+                + time.format(DateTimeFormatter.ofPattern("hh:mm a"))
+                + ". Status: PENDING";
     }
 
-    Appointment appointment = new Appointment();
+    private boolean isUpcomingAppointmentsIntent(String message) {
+        return (message.contains("upcoming") || message.contains("next") || message.contains("my"))
+                && message.contains("appointment");
+    }
 
-    appointment.setPatient(patient);
-    appointment.setDoctor(doctor);   // ✅ correct
-    appointment.setAppointmentDate(date);
-    appointment.setAppointmentTime(time);
+    private boolean isBookingIntent(String message) {
+        return message.contains("book")
+                || message.contains("schedule")
+                || message.contains("appoint")
+                || message.contains("fix an appointment");
+    }
 
-    appointmentRepository.save(appointment);
+    private BookingInput parseBookingInput(String message) {
+        LocalDate date = extractDate(message);
+        LocalTime time = extractTime(message);
+        String doctorName = extractDoctorName(message);
+        return new BookingInput(doctorName, date, time);
+    }
 
-    return "✅ Appointment booked successfully with Dr. "
-            + doctor.getName()
-            + " on "
-            + date
-            + " at "
-            + time;
-}
+    private LocalDate extractDate(String message) {
+        String text = normalize(message);
+
+        Matcher dmy = DATE_DMY_PATTERN.matcher(text);
+        if (dmy.find()) {
+            int day = Integer.parseInt(dmy.group(1));
+            int month = Integer.parseInt(dmy.group(2));
+            String y = dmy.group(3);
+            int year = y == null ? LocalDate.now().getYear() : Integer.parseInt(y);
+            if (year < 100) {
+                year += 2000;
+            }
+            try {
+                return LocalDate.of(year, month, day);
+            } catch (DateTimeException ignored) {
+                return null;
+            }
+        }
+
+        Map<String, Integer> months = monthMap();
+        for (Map.Entry<String, Integer> entry : months.entrySet()) {
+            if (!text.contains(entry.getKey())) {
+                continue;
+            }
+
+            Matcher dayMatcher = Pattern.compile("\\b(\\d{1,2})(?:st|nd|rd|th)?\\b").matcher(text);
+            int day = -1;
+            if (dayMatcher.find()) {
+                day = Integer.parseInt(dayMatcher.group(1));
+            }
+            if (day == -1) {
+                continue;
+            }
+
+            Matcher yearMatcher = Pattern.compile("\\b(20\\d{2})\\b").matcher(text);
+            int year = LocalDate.now().getYear();
+            if (yearMatcher.find()) {
+                year = Integer.parseInt(yearMatcher.group(1));
+            }
+
+            try {
+                return LocalDate.of(year, entry.getValue(), day);
+            } catch (DateTimeException ignored) {
+                return null;
+            }
+        }
+
+        return null;
+    }
+
+    private LocalTime extractTime(String message) {
+        String text = normalize(message);
+
+        Matcher h12 = TIME_12H_PATTERN.matcher(text);
+        if (h12.find()) {
+            int hour = Integer.parseInt(h12.group(1));
+            int minute = h12.group(2) == null ? 0 : Integer.parseInt(h12.group(2));
+            String ampm = h12.group(3).toLowerCase(Locale.ROOT);
+
+            if (hour == 12) {
+                hour = 0;
+            }
+            if ("pm".equals(ampm)) {
+                hour += 12;
+            }
+            return LocalTime.of(hour, minute);
+        }
+
+        Matcher h24 = TIME_24H_PATTERN.matcher(text);
+        if (h24.find()) {
+            int hour = Integer.parseInt(h24.group(1));
+            int minute = Integer.parseInt(h24.group(2));
+            return LocalTime.of(hour, minute);
+        }
+
+        return null;
+    }
+
+    private String extractDoctorName(String message) {
+        String normalizedMessage = normalizeDoctorName(message);
+        if (!normalizedMessage.isBlank()) {
+            List<User> allUsers = userRepository.findAll();
+            for (User user : allUsers) {
+                if (user.getRole() != Role.DOCTOR || user.getName() == null) {
+                    continue;
+                }
+                String candidate = normalizeDoctorName(user.getName());
+                if (!candidate.isBlank() && normalizedMessage.contains(candidate)) {
+                    return user.getName();
+                }
+            }
+        }
+
+        String cleaned = message
+                .replaceAll("(?i)\\b(book|appointment|appoint|schedule|on|at|for|with|dr\\.?|doctor|please|just|nothing|specific)\\b", " ")
+                .replaceAll("(?i)\\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\\b", " ")
+                .replaceAll("\\d{1,2}([/-]\\d{1,2}){1,2}", " ")
+                .replaceAll("\\b\\d{1,2}(:\\d{2})?\\s*(am|pm)\\b", " ")
+                .replaceAll("\\b\\d{1,2}\\b", " ")
+                .replaceAll("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b", " ")
+                .replaceAll("[,.\\/-]", " ")
+                .replaceAll("\\s+", " ")
+                .trim();
+
+        if (cleaned.isBlank()) {
+            return "";
+        }
+
+        String[] tokens = cleaned.split(" ");
+        return tokens[tokens.length - 1];
+    }
+
+    private User findDoctorByName(String rawName) {
+        String target = normalizeDoctorName(rawName);
+        if (target.isBlank()) {
+            return null;
+        }
+
+        User exact = userRepository.findByNameIgnoreCase(target);
+        if (exact != null && exact.getRole() == Role.DOCTOR) {
+            return exact;
+        }
+
+        List<User> allUsers = userRepository.findAll();
+        for (User user : allUsers) {
+            if (user.getRole() != Role.DOCTOR || user.getName() == null) {
+                continue;
+            }
+            String candidate = normalizeDoctorName(user.getName());
+            if (candidate.equals(target) || candidate.contains(target) || target.contains(candidate)) {
+                return user;
+            }
+        }
+
+        return null;
+    }
+
+    private String normalizeDoctorName(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        String normalized = value.toLowerCase(Locale.ROOT)
+                .replace("dr.", "")
+                .replace("dr", "")
+                .replaceAll("[^a-z]", "")
+                .trim();
+        return normalized.replaceAll("(.)\\1+", "$1");
+    }
+
+    private String cleanupDoctorName(String name) {
+        if (name == null) {
+            return "";
+        }
+        return name.replaceFirst("(?i)^\\s*dr\\.?\\s*", "").trim();
+    }
+
+    private String normalize(String input) {
+        return input == null ? "" : input.toLowerCase(Locale.ROOT);
+    }
+
+    private Map<String, Integer> monthMap() {
+        Map<String, Integer> map = new HashMap<>();
+        map.put("january", 1); map.put("jan", 1);
+        map.put("february", 2); map.put("feb", 2);
+        map.put("march", 3); map.put("mar", 3);
+        map.put("april", 4); map.put("apr", 4);
+        map.put("may", 5);
+        map.put("june", 6); map.put("jun", 6);
+        map.put("july", 7); map.put("jul", 7);
+        map.put("august", 8); map.put("aug", 8);
+        map.put("september", 9); map.put("sep", 9); map.put("sept", 9);
+        map.put("october", 10); map.put("oct", 10);
+        map.put("november", 11); map.put("nov", 11);
+        map.put("december", 12); map.put("dec", 12);
+        return map;
+    }
+
+    private static class BookingInput {
+        private final String doctorName;
+        private final LocalDate date;
+        private final LocalTime time;
+
+        private BookingInput(String doctorName, LocalDate date, LocalTime time) {
+            this.doctorName = doctorName;
+            this.date = date;
+            this.time = time;
+        }
+
+        private boolean isComplete() {
+            return doctorName != null && !doctorName.isBlank() && date != null && time != null;
+        }
+    }
 }

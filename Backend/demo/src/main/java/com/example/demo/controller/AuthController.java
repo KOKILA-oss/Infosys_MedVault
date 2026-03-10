@@ -50,7 +50,7 @@ public class AuthController {
     }
 
 
-   @PostMapping("/register/request-otp")
+@PostMapping("/register/request-otp")
 public String requestOtp(@RequestBody OtpRequest request) {
 
     if (userRepository.findByEmail(request.email).isPresent()) {
@@ -138,9 +138,12 @@ public ResponseEntity<?> requestLoginOtp(@RequestBody LoginOtpRequest request) {
     emailOtp.setExpiryTime(LocalDateTime.now().plusMinutes(5));
 
     emailOtpRepository.save(emailOtp);
-    emailService.sendOtp(request.email, otp);
-
-    return ResponseEntity.ok("Login OTP sent to email");
+    try {
+        emailService.sendOtp(request.email, otp);
+        return ResponseEntity.ok("Login OTP sent to email");
+    } catch (IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+    }
 }
 
 @PostMapping("/login/resend-otp")
@@ -159,10 +162,12 @@ public ResponseEntity<?> resendLoginOtp(@RequestBody OtpRequest request) {
     emailOtp.setExpiryTime(LocalDateTime.now().plusMinutes(5));
 
     emailOtpRepository.save(emailOtp);
-    emailService.sendOtp(request.email, otp);
-     System.out.println("RESEND OTP CALLED");
-System.out.println("Generated OTP: " + otp);
-    return ResponseEntity.ok("OTP resent successfully");
+    try {
+        emailService.sendOtp(request.email, otp);
+        return ResponseEntity.ok("OTP resent successfully");
+    } catch (IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+    }
 }
 
 
@@ -221,9 +226,12 @@ public ResponseEntity<?> requestForgotPasswordOtp(
     emailOtp.setExpiryTime(LocalDateTime.now().plusMinutes(5));
 
     emailOtpRepository.save(emailOtp);
-    emailService.sendOtp(request.email, otp);
-
-    return ResponseEntity.ok("Reset OTP sent successfully");
+    try {
+        emailService.sendOtp(request.email, otp);
+        return ResponseEntity.ok("Reset OTP sent successfully");
+    } catch (IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(ex.getMessage());
+    }
 }
 
 @PostMapping("/forgot-password/verify-otp")

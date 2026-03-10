@@ -188,7 +188,7 @@ const DoctorPatientRegistry = () => {
       let appointments = [];
       if (token) {
         try {
-          const response = await axios.get('/api/doctor/appointments/doctor', {
+          const response = await axios.get('/api/doctor/appointments', {
             headers: { Authorization: `Bearer ${token}` }
           });
           appointments = Array.isArray(response.data) ? response.data : [];
@@ -201,6 +201,7 @@ const DoctorPatientRegistry = () => {
 
       appointments.forEach((item) => {
         const profile = {
+          patientId: item.patientId || '',
           name:
             item.patientName ||
             item.patient?.name ||
