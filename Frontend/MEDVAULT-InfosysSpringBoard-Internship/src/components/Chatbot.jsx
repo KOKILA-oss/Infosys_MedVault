@@ -1,6 +1,36 @@
 import React, { useState } from "react";
 import axios from "axios";
 
+const parseAppointmentList = (text) => {
+  if (typeof text !== "string" || !text.startsWith("Here are your upcoming appointments:")) {
+    return null;
+  }
+
+  const appointments = text
+    .split("\n")
+    .slice(1)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      const match = line.match(
+        /^\d+\.\s+Dr\.\s+(.+?)\s+-\s+([^,]+),\s+(.+?)\s+at\s+(.+?)\s+\((.+)\)$/
+      );
+      if (!match) {
+        return { raw: line };
+      }
+
+      return {
+        doctorName: match[1],
+        appointmentDay: match[2],
+        appointmentDate: match[3],
+        appointmentTime: match[4],
+        appointmentStatus: match[5]
+      };
+    });
+
+  return appointments.length > 0 ? appointments : null;
+};
+
 const Chatbot = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
@@ -24,7 +54,7 @@ const Chatbot = () => {
   };
 
   const sendMessage = async () => {
-    if (!message) return;
+    if (!message.trim()) return;
 
     const userMsg = { sender: "user", text: message };
     setMessages((prev) => [...prev, userMsg]);
@@ -71,7 +101,7 @@ const Chatbot = () => {
 
   return (
     <div style={styles.chatContainer}>
-      <div style={styles.chatHeader}>
+      <div style={styles.header}>
         <strong>MedVault Assistant</strong>
         <button
           type="button"
@@ -85,17 +115,43 @@ const Chatbot = () => {
       </div>
 
       <div style={styles.chatBox}>
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            style={{
-              textAlign: msg.sender === "user" ? "right" : "left",
-              marginBottom: "8px"
-            }}
-          >
-            <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.text}</p>
-          </div>
-        ))}
+        {messages.map((msg, index) => {
+          const parsedAppointments = msg.sender === "bot" ? parseAppointmentList(msg.text) : null;
+
+          return (
+            <div
+              key={index}
+              style={{
+                textAlign: msg.sender === "user" ? "right" : "left",
+                marginBottom: "8px"
+              }}
+            >
+              {parsedAppointments ? (
+                <div style={styles.appointmentResponse}>
+                  <p style={styles.botHeading}>Here are your upcoming appointments:</p>
+                  {parsedAppointments.map((appointment, appointmentIndex) => (
+                    <div key={`${index}-${appointmentIndex}`} style={styles.appointmentCard}>
+                      {"raw" in appointment ? (
+                        <span>{appointment.raw}</span>
+                      ) : (
+                        <>
+                          <strong>Dr. {appointment.doctorName}</strong>
+                          <span>
+                            {appointment.appointmentDay}, {appointment.appointmentDate}
+                          </span>
+                          <span>{appointment.appointmentTime}</span>
+                          <span>Status: {appointment.appointmentStatus}</span>
+                        </>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p style={{ whiteSpace: "pre-wrap", margin: 0 }}>{msg.text}</p>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div style={styles.inputContainer}>
@@ -104,6 +160,11 @@ const Chatbot = () => {
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           placeholder="Ask something..."
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              sendMessage();
+            }
+          }}
         />
 
         <button style={styles.button} onClick={sendMessage}>
@@ -120,7 +181,7 @@ const styles = {
     bottom: "20px",
     right: "20px",
     width: "340px",
-    height: "420px",
+    height: "auto",
     background: "white",
     borderRadius: "12px",
     boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
@@ -128,7 +189,7 @@ const styles = {
     display: "flex",
     flexDirection: "column"
   },
-  chatHeader: {
+  header: {
     display: "flex",
     alignItems: "center",
     justifyContent: "space-between",
@@ -138,11 +199,12 @@ const styles = {
   },
   minimizeButton: {
     border: "none",
-    background: "transparent",
+    background: "#e8f0ff",
+    color: "#0f62fe",
+    borderRadius: "8px",
+    padding: "6px 10px",
     cursor: "pointer",
-    fontSize: "16px",
-    lineHeight: 1,
-    color: "#444"
+    fontWeight: 600
   },
   minimizedButton: {
     position: "fixed",
@@ -158,10 +220,28 @@ const styles = {
     zIndex: 9999
   },
   chatBox: {
-    flex: 1,
+    height: "320px",
     overflowY: "auto",
     padding: "10px",
     fontSize: "14px"
+  },
+  appointmentResponse: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "8px"
+  },
+  botHeading: {
+    margin: 0,
+    fontWeight: 600
+  },
+  appointmentCard: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "4px",
+    padding: "10px 12px",
+    borderRadius: "10px",
+    background: "#f4f8ff",
+    border: "1px solid #d9e6ff"
   },
   inputContainer: {
     display: "flex",

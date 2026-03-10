@@ -34,99 +34,6 @@ const emptyPrescription = {
   instructions: ''
 };
 
-const demoPatients = [
-  {
-    profile: {
-      name: 'Rahul Sharma',
-      email: 'rahul.sharma@demo.com',
-      phoneNumber: '+91 98765 43210',
-      gender: 'Male',
-      bloodGroup: 'B+',
-      address: 'Baner, Pune',
-      height: '174',
-      weight: '72',
-      sugarLevel: '104',
-      allergies: 'Dust',
-      emergencyContact: 'Anita Sharma - +91 99887 66554'
-    },
-    review: {
-      diagnosis: 'Mild seasonal allergy',
-      symptoms: 'Sneezing, watery eyes',
-      vitals: 'BP 120/80, Pulse 74',
-      followUpDate: '',
-      doctorNotes: 'Advise hydration and anti-allergic medication.'
-    },
-    prescriptions: [
-      {
-        id: 101,
-        dateIssued: new Date().toISOString(),
-        medication: 'Cetirizine',
-        dosage: '10 mg',
-        duration: '5 days',
-        instructions: 'Take after dinner'
-      }
-    ],
-    reports: []
-  },
-  {
-    profile: {
-      name: 'Meera Nair',
-      email: 'meera.nair@demo.com',
-      phoneNumber: '+91 97654 32109',
-      gender: 'Female',
-      bloodGroup: 'O+',
-      address: 'Kormangala, Bengaluru',
-      height: '162',
-      weight: '58',
-      sugarLevel: '92',
-      allergies: 'None',
-      emergencyContact: 'Vikram Nair - +91 90011 22334'
-    },
-    review: {
-      diagnosis: 'Routine follow-up',
-      symptoms: 'No active complaint',
-      vitals: 'BP 114/76, Pulse 70',
-      followUpDate: '',
-      doctorNotes: 'Continue current lifestyle plan and annual screening.'
-    },
-    prescriptions: [],
-    reports: []
-  },
-  {
-    profile: {
-      name: 'Aman Verma',
-      email: 'aman.verma@demo.com',
-      phoneNumber: '+91 98989 12121',
-      gender: 'Male',
-      bloodGroup: 'A-',
-      address: 'Sector 62, Noida',
-      height: '179',
-      weight: '81',
-      sugarLevel: '116',
-      allergies: 'Peanuts',
-      emergencyContact: 'Ritu Verma - +91 97111 88776'
-    },
-    review: {
-      diagnosis: 'Prediabetes monitoring',
-      symptoms: 'Occasional fatigue',
-      vitals: 'BP 126/84, Pulse 78',
-      followUpDate: '',
-      doctorNotes: 'Track fasting sugar and begin moderate exercise.'
-    },
-    prescriptions: [
-      {
-        id: 102,
-        dateIssued: new Date().toISOString(),
-        medication: 'Metformin',
-        dosage: '500 mg',
-        duration: '30 days',
-        instructions: 'Take with breakfast'
-      }
-    ],
-    reports: []
-  }
-];
-
 const mergeTruthyFields = (base, updates) => {
   const next = { ...base };
   Object.entries(updates).forEach(([key, value]) => {
@@ -174,6 +81,7 @@ const DoctorPatientRegistry = () => {
   const [patientOrder, setPatientOrder] = useState([]);
   const [selectedPatientKey, setSelectedPatientKey] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [loadError, setLoadError] = useState('');
   const [profileDraft, setProfileDraft] = useState(defaultProfile);
   const [reviewDraft, setReviewDraft] = useState(defaultReview);
   const [prescriptionDraft, setPrescriptionDraft] = useState(emptyPrescription);
@@ -182,99 +90,75 @@ const DoctorPatientRegistry = () => {
   useEffect(() => {
     const loadPatients = async () => {
       setLoading(true);
+      setLoadError('');
       const token = localStorage.getItem('token');
       const storedRegistry = parseStoredRegistry();
 
-      let appointments = [];
-      if (token) {
-        try {
-          const response = await axios.get('/api/doctor/appointments', {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          appointments = Array.isArray(response.data) ? response.data : [];
-        } catch (error) {
-          console.error('Unable to fetch doctor appointments for registry', error);
-        }
+      if (!token) {
+        setRegistry({});
+        setPatientOrder([]);
+        setSelectedPatientKey('');
+        setLoadError('Login expired. Please sign in again.');
+        setLoading(false);
+        return;
       }
 
-      const derivedPatients = {};
+      let patients = [];
+      try {
+        const response = await axios.get('/api/doctor/appointments/patients', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        patients = Array.isArray(response.data) ? response.data : [];
+      } catch (error) {
+        console.error('Unable to fetch doctor patient registry', error);
+        setRegistry({});
+        setPatientOrder([]);
+        setSelectedPatientKey('');
+        setLoadError('Unable to load connected patients right now.');
+        setLoading(false);
+        return;
+      }
 
-      appointments.forEach((item) => {
+      const mergedRegistry = {};
+
+      patients.forEach((item) => {
         const profile = {
           patientId: item.patientId || '',
-          name:
-            item.patientName ||
-            item.patient?.name ||
-            item.patient?.fullName ||
-            'Patient',
-          email: item.patientEmail || item.patient?.email || '',
-          phoneNumber: item.patientPhone || item.patient?.phoneNumber || item.patient?.phone || '',
-          gender: item.patient?.gender || '',
-          bloodGroup: item.patient?.bloodGroup || '',
-          address: item.patient?.address || '',
-          height: item.patient?.height || '',
-          weight: item.patient?.weight || '',
-          sugarLevel: item.patient?.sugarLevel || '',
-          allergies: item.patient?.allergies || '',
-          emergencyContact: item.patient?.emergencyContact || ''
+          name: item.patientName || item.patient?.name || item.patient?.fullName || item.name || 'Patient',
+          email: item.patientEmail || item.patient?.email || item.email || '',
+          phoneNumber:
+            item.patientPhone || item.patient?.phoneNumber || item.patient?.phone || item.phoneNumber || '',
+          gender: item.patient?.gender || item.gender || '',
+          bloodGroup: item.patient?.bloodGroup || item.bloodGroup || '',
+          address: item.patient?.address || item.address || '',
+          height: item.patient?.height ?? item.height ?? '',
+          weight: item.patient?.weight ?? item.weight ?? '',
+          sugarLevel: item.patient?.sugarLevel ?? item.sugarLevel ?? '',
+          allergies: item.patient?.allergies || item.allergies || '',
+          emergencyContact: item.patient?.emergencyContact || item.emergencyContact || ''
         };
 
         const key = createPatientKey(profile);
-        if (!derivedPatients[key]) {
-          derivedPatients[key] = {
-            profile,
-            review: { ...defaultReview },
-            prescriptions: [],
-            reports: []
-          };
-          return;
-        }
+        const existing = storedRegistry[key] || {};
 
-        derivedPatients[key].profile = {
-          ...mergeTruthyFields(derivedPatients[key].profile, profile)
-        };
-      });
-
-      const mergedRegistry = { ...storedRegistry };
-
-      demoPatients.forEach((demo) => {
-        const key = createPatientKey(demo.profile);
-        const existing = mergedRegistry[key] || {};
         mergedRegistry[key] = {
           profile: {
             ...defaultProfile,
-            ...demo.profile,
-            ...existing.profile
-          },
-          review: {
-            ...defaultReview,
-            ...demo.review,
-            ...existing.review
-          },
-          prescriptions:
-            Array.isArray(existing.prescriptions) && existing.prescriptions.length > 0
-              ? existing.prescriptions
-              : demo.prescriptions,
-          reports: Array.isArray(existing.reports) ? existing.reports : []
-        };
-      });
-
-      Object.entries(derivedPatients).forEach(([key, value]) => {
-        const existing = mergedRegistry[key] || {};
-        mergedRegistry[key] = {
-          profile: {
-            ...defaultProfile,
-            ...value.profile,
-            ...existing.profile
+            ...profile,
+            ...mergeTruthyFields({}, existing.profile || {})
           },
           review: {
             ...defaultReview,
             ...existing.review
           },
-          prescriptions: Array.isArray(existing.prescriptions)
-            ? existing.prescriptions
-            : [],
-          reports: Array.isArray(existing.reports) ? existing.reports : []
+          prescriptions: Array.isArray(existing.prescriptions) ? existing.prescriptions : [],
+          reports: Array.isArray(existing.reports) ? existing.reports : [],
+          meta: {
+            patientId: item.patientId,
+            appointmentCount: item.appointmentCount || 0,
+            latestAppointmentDate: item.latestAppointmentDate || '',
+            latestAppointmentStatus: item.latestAppointmentStatus || ''
+          }
         };
       });
 
@@ -288,9 +172,9 @@ const DoctorPatientRegistry = () => {
       setPatientOrder(keys);
 
       if (keys.length > 0) {
-        setSelectedPatientKey((current) =>
-          current && keys.includes(current) ? current : keys[0]
-        );
+        setSelectedPatientKey((current) => (current && keys.includes(current) ? current : keys[0]));
+      } else {
+        setSelectedPatientKey('');
       }
 
       setLoading(false);
@@ -461,12 +345,21 @@ const DoctorPatientRegistry = () => {
         <section className="registry-content">
           {loading ? (
             <div className="registry-card">Loading patient registry...</div>
-          ) : (
-            selectedPatient ? (
-              <>
+          ) : loadError ? (
+            <div className="registry-card">{loadError}</div>
+          ) : selectedPatient ? (
+            <>
               <div className="registry-card">
                 <div className="section-header">
-                  <h2>Patient Profile</h2>
+                  <div>
+                    <h2>Patient Profile</h2>
+                    <p className="muted">
+                      Connected through {selectedPatient.meta?.appointmentCount || 0} appointment(s)
+                      {selectedPatient.meta?.latestAppointmentDate
+                        ? ` • Latest: ${selectedPatient.meta.latestAppointmentDate} (${selectedPatient.meta.latestAppointmentStatus || 'N/A'})`
+                        : ''}
+                    </p>
+                  </div>
                   <button className="primary-btn" onClick={saveProfileAndReview}>
                     Save Updates
                   </button>
@@ -635,10 +528,9 @@ const DoctorPatientRegistry = () => {
                   )}
                 </div>
               </div>
-              </>
-            ) : (
-              <div className="registry-card">No patient available for this doctor yet.</div>
-            )
+            </>
+          ) : (
+            <div className="registry-card">No patient available for this doctor yet.</div>
           )}
         </section>
       </div>

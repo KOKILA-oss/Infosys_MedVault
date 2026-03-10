@@ -36,13 +36,16 @@ import com.example.demo.security.JwtUtil;
 @Service
 public class ChatService {
 
+    private static final String URL = "https://openrouter.ai/api/v1/chat/completions";
+    private static final Pattern DATE_DMY_PATTERN =
+            Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b");
+    private static final Pattern TIME_12H_PATTERN =
+            Pattern.compile("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\b", Pattern.CASE_INSENSITIVE);
+    private static final Pattern TIME_24H_PATTERN =
+            Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
+
     @Value("${openrouter.api.key}")
     private String apiKey;
-
-    private static final String URL = "https://openrouter.ai/api/v1/chat/completions";
-    private static final Pattern DATE_DMY_PATTERN = Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b");
-    private static final Pattern TIME_12H_PATTERN = Pattern.compile("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\b", Pattern.CASE_INSENSITIVE);
-    private static final Pattern TIME_24H_PATTERN = Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
 
     @Autowired
     private JwtUtil jwtUtil;
@@ -168,6 +171,10 @@ public class ChatService {
             return "Doctor not found.";
         }
 
+        if (doctor.getRole() != Role.DOCTOR) {
+            return "Selected user is not a doctor.";
+        }
+
         if (date.isBefore(LocalDate.now())) {
             return "Cannot book in the past. Please provide a future date.";
         }
@@ -222,8 +229,8 @@ public class ChatService {
         if (dmy.find()) {
             int day = Integer.parseInt(dmy.group(1));
             int month = Integer.parseInt(dmy.group(2));
-            String y = dmy.group(3);
-            int year = y == null ? LocalDate.now().getYear() : Integer.parseInt(y);
+            String yearToken = dmy.group(3);
+            int year = yearToken == null ? LocalDate.now().getYear() : Integer.parseInt(yearToken);
             if (year < 100) {
                 year += 2000;
             }
@@ -378,18 +385,30 @@ public class ChatService {
 
     private Map<String, Integer> monthMap() {
         Map<String, Integer> map = new HashMap<>();
-        map.put("january", 1); map.put("jan", 1);
-        map.put("february", 2); map.put("feb", 2);
-        map.put("march", 3); map.put("mar", 3);
-        map.put("april", 4); map.put("apr", 4);
+        map.put("january", 1);
+        map.put("jan", 1);
+        map.put("february", 2);
+        map.put("feb", 2);
+        map.put("march", 3);
+        map.put("mar", 3);
+        map.put("april", 4);
+        map.put("apr", 4);
         map.put("may", 5);
-        map.put("june", 6); map.put("jun", 6);
-        map.put("july", 7); map.put("jul", 7);
-        map.put("august", 8); map.put("aug", 8);
-        map.put("september", 9); map.put("sep", 9); map.put("sept", 9);
-        map.put("october", 10); map.put("oct", 10);
-        map.put("november", 11); map.put("nov", 11);
-        map.put("december", 12); map.put("dec", 12);
+        map.put("june", 6);
+        map.put("jun", 6);
+        map.put("july", 7);
+        map.put("jul", 7);
+        map.put("august", 8);
+        map.put("aug", 8);
+        map.put("september", 9);
+        map.put("sep", 9);
+        map.put("sept", 9);
+        map.put("october", 10);
+        map.put("oct", 10);
+        map.put("november", 11);
+        map.put("nov", 11);
+        map.put("december", 12);
+        map.put("dec", 12);
         return map;
     }
 
