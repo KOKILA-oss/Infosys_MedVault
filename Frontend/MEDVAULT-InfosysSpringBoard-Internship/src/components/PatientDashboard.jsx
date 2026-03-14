@@ -77,11 +77,11 @@ const PatientDashboard = () => {
   const [appointments, setAppointments] = useState([]);
   const [reports, setReports] = useState([]);
   const [tips, setTips] = useState([]);
-  const unreadNotificationCount = 0;
+  // const unreadNotificationCount = 0;
   const [patientIdentity, setPatientIdentity] = useState({ name: '', email: '', phoneNumber: '' });
   const [registryData, setRegistryData] = useState({});
   const [settings, setSettings] = useState(defaultSettings);
-  const [settingsStatus, setSettingsStatus] = useState('');
+  // const [settingsStatus, setSettingsStatus] = useState('');
 
   useEffect(() => {
     const storedName = localStorage.getItem('userName');
