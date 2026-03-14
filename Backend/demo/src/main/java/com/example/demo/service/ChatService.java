@@ -8,8 +8,8 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.Arrays;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -26,26 +26,38 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.dto.AppointmentStatus;
 import com.example.demo.entity.Appointment;
+import com.example.demo.entity.DoctorProfile;
 import com.example.demo.entity.Role;
 import com.example.demo.entity.User;
 import com.example.demo.repository.AppointmentRepository;
+import com.example.demo.repository.DoctorProfileRepository;
 import com.example.demo.repository.UserRepository;
 import com.example.demo.security.JwtUtil;
+
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 @Service
 public class ChatService {
 
     private static final String URL = "https://openrouter.ai/api/v1/chat/completions";
+    private static final DateTimeFormatter DISPLAY_DATE = DateTimeFormatter.ofPattern("dd MMM yyyy");
+    private static final DateTimeFormatter DISPLAY_TIME = DateTimeFormatter.ofPattern("hh:mm a");
     private static final Pattern DATE_DMY_PATTERN =
             Pattern.compile("\\b(\\d{1,2})[/-](\\d{1,2})(?:[/-](\\d{2,4}))?\\b");
     private static final Pattern TIME_12H_PATTERN =
             Pattern.compile("\\b(\\d{1,2})(?::(\\d{2}))?\\s*(am|pm)\\b", Pattern.CASE_INSENSITIVE);
     private static final Pattern TIME_24H_PATTERN =
             Pattern.compile("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b");
+    private static final List<LocalTime> CLINIC_SLOTS = List.of(
+            LocalTime.of(9, 0),
+            LocalTime.of(10, 30),
+            LocalTime.of(12, 0),
+            LocalTime.of(15, 0),
+            LocalTime.of(16, 30)
+    );
 
     @Value("${openrouter.api.key}")
     private String apiKey;
@@ -59,7 +71,10 @@ public class ChatService {
     @Autowired
     private AppointmentRepository appointmentRepository;
 
-    private final Map<String, Boolean> awaitingBookingDetailsByEmail = new ConcurrentHashMap<>();
+    @Autowired
+    private DoctorProfileRepository doctorProfileRepository;
+
+    private final Map<String, BookingSession> bookingSessions = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
@@ -77,17 +92,8 @@ public class ChatService {
 
             String normalized = normalize(userMessage);
 
-            BookingInput parsed = parseBookingInput(userMessage);
-            if (parsed.isComplete()) {
-                awaitingBookingDetailsByEmail.put(email, false);
-                return bookAppointment(patient, parsed.doctorName, parsed.date, parsed.time, parsed.reason);
-            }
-
-            boolean bookingIntent = isBookingIntent(normalized);
-            boolean awaitingDetails = awaitingBookingDetailsByEmail.getOrDefault(email, false);
-            if (bookingIntent || awaitingDetails) {
-                awaitingBookingDetailsByEmail.put(email, true);
-                return buildBookingPrompt(parsed);
+            if (isBookingIntent(normalized) || bookingSessions.containsKey(email)) {
+                return handleBookingConversation(patient, userMessage);
             }
 
             if (isGreetingIntent(normalized)) {
@@ -104,9 +110,96 @@ public class ChatService {
         }
     }
 
+    private String handleBookingConversation(User patient, String userMessage) {
+        String email = patient.getEmail();
+        String normalized = normalize(userMessage);
+        BookingSession session = bookingSessions.computeIfAbsent(email, key -> new BookingSession());
+
+        if (normalized.contains("cancel booking") || normalized.equals("cancel") || normalized.equals("stop")) {
+            bookingSessions.remove(email);
+            return "Appointment booking stopped. Say 'book appointment' whenever you want to start again.";
+        }
+
+        if (session.reason == null || session.reason.isBlank()) {
+            String extractedReason = extractReason(userMessage);
+            if (extractedReason == null || extractedReason.isBlank() || isBookingIntent(normalized)) {
+                return "What is the reason for the appointment? For example: chest pain, skin rash, fever, dental pain.";
+            }
+
+            session.reason = extractedReason;
+            session.specialization = mapReasonToSpecialization(extractedReason);
+            session.suggestedDoctors = findDoctorsForSpecialization(session.specialization);
+            return buildDoctorSuggestionPrompt(session);
+        }
+
+        if (session.doctorId == null) {
+            DoctorProfile selectedDoctor = resolveDoctorSelection(userMessage, session);
+            if (selectedDoctor == null) {
+                return buildDoctorSuggestionPrompt(session);
+            }
+
+            session.doctorId = selectedDoctor.getUser().getId();
+            session.doctorName = selectedDoctor.getUser().getName();
+
+            LocalDate parsedDate = extractDate(userMessage);
+            LocalTime parsedTime = extractTime(userMessage);
+            if (parsedDate != null) {
+                session.date = parsedDate;
+            }
+            if (parsedTime != null) {
+                session.time = parsedTime;
+            }
+
+            if (session.date == null) {
+                return "Selected Dr. " + cleanupDoctorName(session.doctorName)
+                        + ". What date would you prefer? Example: 28/03/2026";
+            }
+        }
+
+        if (session.date == null) {
+            LocalDate parsedDate = extractDate(userMessage);
+            if (parsedDate == null) {
+                return "Please provide the appointment date in a format like 28/03/2026.";
+            }
+            session.date = parsedDate;
+        }
+
+        if (session.date.isBefore(LocalDate.now())) {
+            session.date = null;
+            session.time = null;
+            return "Cannot book in the past. Please provide a future date.";
+        }
+
+        List<LocalTime> availableSlots = getAvailableSlots(session.doctorId, session.date);
+        if (availableSlots.isEmpty()) {
+            session.time = null;
+            return "No slots are available with Dr. " + cleanupDoctorName(session.doctorName)
+                    + " on " + session.date.format(DISPLAY_DATE)
+                    + ". Please choose another date.";
+        }
+
+        if (session.time == null) {
+            LocalTime parsedTime = extractTime(userMessage);
+            if (parsedTime != null) {
+                session.time = parsedTime;
+            } else {
+                return buildTimePrompt(session.doctorName, session.date, availableSlots);
+            }
+        }
+
+        if (!availableSlots.contains(session.time)) {
+            session.time = null;
+            return "That time is not available. " + buildTimePrompt(session.doctorName, session.date, availableSlots);
+        }
+
+        String confirmation = bookAppointment(patient, session);
+        bookingSessions.remove(email);
+        return confirmation;
+    }
+
     private String askAI(String userMessage) {
         if (apiKey == null || apiKey.isBlank()) {
-            return "I can help with appointments. Ask me about upcoming appointments or booking a visit.";
+            return "I can help with appointments. Ask for upcoming appointments or say 'book appointment' to start.";
         }
 
         HttpHeaders headers = new HttpHeaders();
@@ -138,10 +231,10 @@ public class ChatService {
                 return content.asText();
             }
         } catch (Exception ignored) {
-            return "I can help with appointments. Ask me for your upcoming appointments or say: book appointment with doctor name, date, time, and reason (comma separated).";
+            return "I can help with appointments. Ask for upcoming appointments or say 'book appointment' to start.";
         }
 
-        return "I can help with appointments. Ask me for your upcoming appointments or say: book appointment with doctor name, date, time, and reason (comma separated).";
+        return "I can help with appointments. Ask for upcoming appointments or say 'book appointment' to start.";
     }
 
     private String getAppointments(User patient) {
@@ -166,8 +259,8 @@ public class ChatService {
             String doctorName = cleanupDoctorName(appointment.getDoctor().getName());
             String day = appointment.getAppointmentDate().getDayOfWeek()
                     .getDisplayName(TextStyle.SHORT, Locale.ENGLISH);
-            String date = appointment.getAppointmentDate().format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
-            String time = appointment.getAppointmentTime().format(DateTimeFormatter.ofPattern("hh:mm a"));
+            String date = appointment.getAppointmentDate().format(DISPLAY_DATE);
+            String time = appointment.getAppointmentTime().format(DISPLAY_TIME);
             String status = appointment.getStatus() == null ? "PENDING" : appointment.getStatus().name();
 
             builder.append(i++)
@@ -187,44 +280,222 @@ public class ChatService {
         return builder.toString();
     }
 
-    private String bookAppointment(User patient, String doctorName, LocalDate date, LocalTime time, String reasonText) {
-        User doctor = findDoctorByName(doctorName);
-        if (doctor == null) {
-            return "Doctor not found.";
+    private String bookAppointment(User patient, BookingSession session) {
+        User doctor = userRepository.findById(session.doctorId).orElse(null);
+        if (doctor == null || doctor.getRole() != Role.DOCTOR) {
+            return "Doctor not found. Please start the booking again.";
         }
 
-        if (doctor.getRole() != Role.DOCTOR) {
-            return "Selected user is not a doctor.";
-        }
-
-        if (date.isBefore(LocalDate.now())) {
-            return "Cannot book in the past. Please provide a future date.";
-        }
-
-        if (appointmentRepository.existsByDoctorAndAppointmentDateAndAppointmentTime(doctor, date, time)) {
-            return "That slot is already booked. Please choose another time.";
+        if (appointmentRepository.existsByDoctorAndAppointmentDateAndAppointmentTime(doctor, session.date, session.time)) {
+            return "That slot was just booked by someone else. Please start again and choose another time.";
         }
 
         Appointment appointment = new Appointment();
         appointment.setPatient(patient);
         appointment.setDoctor(doctor);
-        appointment.setAppointmentDate(date);
-        appointment.setAppointmentTime(time);
+        appointment.setAppointmentDate(session.date);
+        appointment.setAppointmentTime(session.time);
         appointment.setStatus(AppointmentStatus.PENDING);
         appointment.setCreatedAt(LocalDateTime.now());
-        appointment.setReason(buildChatbotReason(reasonText));
-
+        appointment.setReason(session.reason);
         appointmentRepository.save(appointment);
 
         return "Appointment booked successfully with Dr. "
                 + cleanupDoctorName(doctor.getName())
-                + " on "
-                + date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
-                + " at "
-                + time.format(DateTimeFormatter.ofPattern("hh:mm a"))
-                + ". Reason: "
-                + buildChatbotReason(reasonText)
+                + " for " + session.reason
+                + " on " + session.date.format(DISPLAY_DATE)
+                + " at " + session.time.format(DISPLAY_TIME)
                 + ". Status: PENDING";
+    }
+
+    private String buildDoctorSuggestionPrompt(BookingSession session) {
+        List<DoctorProfile> doctors = session.suggestedDoctors;
+        String specializationLabel = session.specialization == null ? "relevant" : session.specialization;
+
+        if (doctors.isEmpty()) {
+            doctors = doctorProfileRepository.findAll().stream()
+                    .filter(profile -> profile.getUser() != null && profile.getUser().getRole() == Role.DOCTOR)
+                    .sorted(Comparator.comparing(profile -> safeLower(profile.getUser().getName())))
+                    .limit(5)
+                    .toList();
+            session.suggestedDoctors = doctors;
+
+            if (doctors.isEmpty()) {
+                return "I could not find any doctors right now. Please try again later.";
+            }
+
+            return "I noted the reason as '" + session.reason + "'. I could not map it to a specialization, "
+                    + "so choose one of these available doctors by number or name:\n"
+                    + formatDoctorList(doctors);
+        }
+
+        return "Reason noted: " + session.reason + ". Based on that, you may need "
+                + specializationLabel + ". Choose a doctor by number or name:\n"
+                + formatDoctorList(doctors);
+    }
+
+    private String formatDoctorList(List<DoctorProfile> doctors) {
+        StringBuilder builder = new StringBuilder();
+        for (int i = 0; i < doctors.size(); i++) {
+            DoctorProfile doctor = doctors.get(i);
+            String hospital = doctor.getHospital() == null ? "MedVault Care" : doctor.getHospital().getName();
+            builder.append(i + 1)
+                    .append(". Dr. ")
+                    .append(cleanupDoctorName(doctor.getUser().getName()))
+                    .append(" - ")
+                    .append(defaultText(doctor.getSpecialization(), "General Medicine"))
+                    .append(" - ")
+                    .append(hospital)
+                    .append("\n");
+        }
+        return builder.toString().trim();
+    }
+
+    private String buildTimePrompt(String doctorName, LocalDate date, List<LocalTime> slots) {
+        String slotText = slots.stream()
+                .map(slot -> slot.format(DISPLAY_TIME))
+                .reduce((left, right) -> left + ", " + right)
+                .orElse("");
+
+        return "Available slots with Dr. " + cleanupDoctorName(doctorName)
+                + " on " + date.format(DISPLAY_DATE)
+                + ": " + slotText
+                + ". Please choose a time.";
+    }
+
+    private DoctorProfile resolveDoctorSelection(String message, BookingSession session) {
+        String trimmed = message == null ? "" : message.trim();
+        if (trimmed.matches("\\d+")) {
+            int index = Integer.parseInt(trimmed);
+            if (index >= 1 && index <= session.suggestedDoctors.size()) {
+                return session.suggestedDoctors.get(index - 1);
+            }
+        }
+
+        String normalizedMessage = normalizeDoctorName(trimmed);
+        if (normalizedMessage.isBlank()) {
+            return null;
+        }
+
+        for (DoctorProfile profile : session.suggestedDoctors) {
+            if (profile.getUser() == null || profile.getUser().getName() == null) {
+                continue;
+            }
+            String candidate = normalizeDoctorName(profile.getUser().getName());
+            if (candidate.equals(normalizedMessage)
+                    || candidate.contains(normalizedMessage)
+                    || normalizedMessage.contains(candidate)) {
+                return profile;
+            }
+        }
+
+        for (DoctorProfile profile : doctorProfileRepository.findAll()) {
+            if (profile.getUser() == null || profile.getUser().getName() == null) {
+                continue;
+            }
+            String candidate = normalizeDoctorName(profile.getUser().getName());
+            if (candidate.equals(normalizedMessage)
+                    || candidate.contains(normalizedMessage)
+                    || normalizedMessage.contains(candidate)) {
+                return profile;
+            }
+        }
+
+        return null;
+    }
+
+    private List<DoctorProfile> findDoctorsForSpecialization(String specialization) {
+        return doctorProfileRepository.findAll().stream()
+                .filter(profile -> profile.getUser() != null && profile.getUser().getRole() == Role.DOCTOR)
+                .filter(profile -> specialization == null
+                        || specialization.equalsIgnoreCase(defaultText(profile.getSpecialization(), "")))
+                .sorted(Comparator.comparing(profile -> safeLower(profile.getUser().getName())))
+                .limit(5)
+                .toList();
+    }
+
+    private List<LocalTime> getAvailableSlots(Long doctorId, LocalDate date) {
+        User doctor = userRepository.findById(doctorId).orElse(null);
+        if (doctor == null) {
+            return List.of();
+        }
+
+        List<Appointment> bookedAppointments = appointmentRepository.findByDoctorAndAppointmentDate(doctor, date);
+        List<LocalTime> bookedTimes = bookedAppointments.stream()
+                .map(Appointment::getAppointmentTime)
+                .toList();
+
+        return CLINIC_SLOTS.stream()
+                .filter(slot -> !bookedTimes.contains(slot))
+                .toList();
+    }
+
+    private String mapReasonToSpecialization(String reason) {
+        if (reason == null) {
+            return null;
+        }
+
+        String normalizedReason = normalize(reason);
+        Map<String, String> specializationByKeyword = new LinkedHashMap<>();
+        specializationByKeyword.put("cardiology", "Cardiology");
+        specializationByKeyword.put("chest pain", "Cardiology");
+        specializationByKeyword.put("heart", "Cardiology");
+        specializationByKeyword.put("bp", "Cardiology");
+        specializationByKeyword.put("blood pressure", "Cardiology");
+        specializationByKeyword.put("skin", "Dermatology");
+        specializationByKeyword.put("rash", "Dermatology");
+        specializationByKeyword.put("itching", "Dermatology");
+        specializationByKeyword.put("acne", "Dermatology");
+        specializationByKeyword.put("tooth", "Dentistry");
+        specializationByKeyword.put("dental", "Dentistry");
+        specializationByKeyword.put("gum", "Dentistry");
+        specializationByKeyword.put("fever", "General Medicine");
+        specializationByKeyword.put("cold", "General Medicine");
+        specializationByKeyword.put("cough", "General Medicine");
+        specializationByKeyword.put("infection", "General Medicine");
+        specializationByKeyword.put("stomach", "Gastroenterology");
+        specializationByKeyword.put("gastric", "Gastroenterology");
+        specializationByKeyword.put("abdomen", "Gastroenterology");
+        specializationByKeyword.put("child", "Pediatrics");
+        specializationByKeyword.put("baby", "Pediatrics");
+        specializationByKeyword.put("pregnancy", "Gynecology");
+        specializationByKeyword.put("period", "Gynecology");
+        specializationByKeyword.put("bone", "Orthopedics");
+        specializationByKeyword.put("knee", "Orthopedics");
+        specializationByKeyword.put("joint", "Orthopedics");
+        specializationByKeyword.put("headache", "Neurology");
+        specializationByKeyword.put("migraine", "Neurology");
+        specializationByKeyword.put("sugar", "Endocrinology");
+        specializationByKeyword.put("diabetes", "Endocrinology");
+        specializationByKeyword.put("eye", "Ophthalmology");
+        specializationByKeyword.put("vision", "Ophthalmology");
+
+        for (Map.Entry<String, String> entry : specializationByKeyword.entrySet()) {
+            if (normalizedReason.contains(entry.getKey())) {
+                return entry.getValue();
+            }
+        }
+
+        return null;
+    }
+
+    private String extractReason(String message) {
+        if (message == null) {
+            return null;
+        }
+
+        String cleaned = message.trim()
+                .replaceAll("(?i)^i\\s+need\\s+(an\\s+)?appointment\\s+(for|because of)\\s+", "")
+                .replaceAll("(?i)^book\\s+(an\\s+)?appointment\\s+(for|because of)?\\s*", "")
+                .replaceAll("(?i)^schedule\\s+(an\\s+)?appointment\\s+(for|because of)?\\s*", "")
+                .replaceAll("(?i)^reason\\s*(is|:)\\s*", "")
+                .trim();
+
+        if (cleaned.isBlank()) {
+            return null;
+        }
+
+        return cleaned.length() > 180 ? cleaned.substring(0, 180) : cleaned;
     }
 
     private boolean isUpcomingAppointmentsIntent(String message) {
@@ -247,30 +518,15 @@ public class ChatService {
                 || message.contains("set appointment")
                 || message.contains("arrange appointment");
     }
-
-    private BookingInput parseBookingInput(String message) {
-        if (message == null) {
-            return new BookingInput("", null, null, "");
-        }
-
-        String[] parts = message.split(",");
-        if (parts.length >= 4) {
-            String doctorName = parts[0].trim();
-            LocalDate date = extractDate(parts[1]);
-            LocalTime time = extractTime(parts[2]);
-            String reason = String.join(",", Arrays.copyOfRange(parts, 3, parts.length)).trim();
-            return new BookingInput(doctorName, date, time, reason);
-        }
-
-        LocalDate date = extractDate(message);
-        LocalTime time = extractTime(message);
-        String doctorName = extractDoctorName(message);
-        String reason = extractReason(message, doctorName, date, time);
-        return new BookingInput(doctorName, date, time, reason);
-    }
-
     private LocalDate extractDate(String message) {
         String text = normalize(message);
+
+        if (text.contains("today")) {
+            return LocalDate.now();
+        }
+        if (text.contains("tomorrow")) {
+            return LocalDate.now().plusDays(1);
+        }
 
         Matcher dmy = DATE_DMY_PATTERN.matcher(text);
         if (dmy.find()) {
@@ -347,105 +603,16 @@ public class ChatService {
         return null;
     }
 
-    private String extractDoctorName(String message) {
-        String normalizedMessage = normalizeDoctorName(message);
-        if (!normalizedMessage.isBlank()) {
-            List<User> allUsers = userRepository.findAll();
-            for (User user : allUsers) {
-                if (user.getRole() != Role.DOCTOR || user.getName() == null) {
-                    continue;
-                }
-                String candidate = normalizeDoctorName(user.getName());
-                if (!candidate.isBlank() && normalizedMessage.contains(candidate)) {
-                    return user.getName();
-                }
-            }
-        }
-
-        String cleaned = message
-                .replaceAll("(?i)\\b(book|appointment|appoint|schedule|on|at|for|with|dr\\.?|doctor|please|just|nothing|specific)\\b", " ")
-                .replaceAll("(?i)\\b(january|jan|february|feb|march|mar|april|apr|may|june|jun|july|jul|august|aug|september|sep|sept|october|oct|november|nov|december|dec)\\b", " ")
-                .replaceAll("\\d{1,2}([/-]\\d{1,2}){1,2}", " ")
-                .replaceAll("\\b\\d{1,2}(:\\d{2})?\\s*(am|pm)\\b", " ")
-                .replaceAll("\\b\\d{1,2}\\b", " ")
-                .replaceAll("\\b([01]?\\d|2[0-3]):([0-5]\\d)\\b", " ")
-                .replaceAll("[,.\\/-]", " ")
-                .replaceAll("\\s+", " ")
-                .trim();
-
-        if (cleaned.isBlank()) {
-            return "";
-        }
-
-        String[] tokens = cleaned.split(" ");
-        return tokens[tokens.length - 1];
-    }
-
-    private String extractReason(String message, String doctorName, LocalDate date, LocalTime time) {
-        if (message == null) {
-            return "";
-        }
-
-        String reason = message;
-
-        if (doctorName != null && !doctorName.isBlank()) {
-            String doctorPattern = Pattern.quote(doctorName);
-            reason = reason.replaceAll("(?i)dr\\.\\s*" + doctorPattern, " ");
-            reason = reason.replaceAll("(?i)" + doctorPattern, " ");
-        }
-
-        if (date != null) {
-            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), " ");
-            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("d/M/yyyy")), " ");
-            reason = reason.replace(date.format(DateTimeFormatter.ISO_LOCAL_DATE), " ");
-            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("dd MMM yyyy")), " ");
-        }
-
-        if (time != null) {
-            reason = reason.replace(time.format(DateTimeFormatter.ofPattern("HH:mm")), " ");
-            reason = reason.replace(time.format(DateTimeFormatter.ofPattern("hh:mm a")), " ");
-        }
-
-        reason = reason.replaceAll("\\s+", " ").trim();
-        return reason;
-    }
-
-    private User findDoctorByName(String rawName) {
-        String target = normalizeDoctorName(rawName);
-        if (target.isBlank()) {
-            return null;
-        }
-
-        User exact = userRepository.findByNameIgnoreCase(target);
-        if (exact != null && exact.getRole() == Role.DOCTOR) {
-            return exact;
-        }
-
-        List<User> allUsers = userRepository.findAll();
-        for (User user : allUsers) {
-            if (user.getRole() != Role.DOCTOR || user.getName() == null) {
-                continue;
-            }
-            String candidate = normalizeDoctorName(user.getName());
-            if (candidate.equals(target) || candidate.contains(target) || target.contains(candidate)) {
-                return user;
-            }
-        }
-
-        return null;
-    }
-
     private String normalizeDoctorName(String value) {
         if (value == null) {
             return "";
         }
 
-        String normalized = value.toLowerCase(Locale.ROOT)
+        return value.toLowerCase(Locale.ROOT)
                 .replace("dr.", "")
                 .replace("dr", "")
                 .replaceAll("[^a-z]", "")
                 .trim();
-        return normalized.replaceAll("(.)\\1+", "$1");
     }
 
     private String cleanupDoctorName(String name) {
@@ -456,18 +623,15 @@ public class ChatService {
     }
 
     private String normalize(String input) {
-        return input == null ? "" : input.toLowerCase(Locale.ROOT);
+        return input == null ? "" : input.toLowerCase(Locale.ROOT).trim();
     }
 
-    private String buildChatbotReason(String userMessage) {
-        String cleaned = userMessage == null ? "" : userMessage.trim();
-        if (cleaned.isBlank()) {
-            return "Booked via chatbot";
-        }
-        if (cleaned.length() > 180) {
-            return cleaned.substring(0, 180);
-        }
-        return cleaned;
+    private String safeLower(String value) {
+        return value == null ? "" : value.toLowerCase(Locale.ROOT);
+    }
+
+    private String defaultText(String value, String fallback) {
+        return value == null || value.isBlank() ? fallback : value;
     }
 
     private Map<String, Integer> monthMap() {
@@ -499,43 +663,13 @@ public class ChatService {
         return map;
     }
 
-    private static class BookingInput {
-        private final String doctorName;
-        private final LocalDate date;
-        private final LocalTime time;
-        private final String reason;
-        private final boolean hasDoctor;
-        private final boolean hasDate;
-        private final boolean hasTime;
-        private final boolean hasReason;
-
-        private BookingInput(String doctorName, LocalDate date, LocalTime time, String reason) {
-            this.doctorName = doctorName;
-            this.date = date;
-            this.time = time;
-            this.reason = reason;
-            this.hasDoctor = doctorName != null && !doctorName.isBlank();
-            this.hasDate = date != null;
-            this.hasTime = time != null;
-            this.hasReason = reason != null && !reason.isBlank();
-        }
-
-        private boolean isComplete() {
-            return hasDoctor && hasDate && hasTime && hasReason;
-        }
-    }
-
-    private String buildBookingPrompt(BookingInput parsed) {
-        StringBuilder builder = new StringBuilder("Please add the missing details (doctor, date, time, reason) in one comma-separated line.");
-        if (parsed != null) {
-            builder.append(" Missing:");
-            if (!parsed.hasDoctor) builder.append(" doctor name");
-            if (!parsed.hasDate) builder.append(" date");
-            if (!parsed.hasTime) builder.append(" time");
-            if (!parsed.hasReason) builder.append(" reason");
-            builder.append(".");
-        }
-        builder.append(" Example: Dr. Aashish, 28/03/2026, 3:00 PM, Knee pain follow-up");
-        return builder.toString();
+    private static class BookingSession {
+        private String reason;
+        private String specialization;
+        private List<DoctorProfile> suggestedDoctors = new ArrayList<>();
+        private Long doctorId;
+        private String doctorName;
+        private LocalDate date;
+        private LocalTime time;
     }
 }

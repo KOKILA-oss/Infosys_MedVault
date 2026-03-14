@@ -321,8 +321,6 @@ const PatientDashboard = () => {
     anchor.remove();
   };
 
-
-
   const dashboardCards = [
     { id: 0, title: 'Registery file', icon: '✨', color: '#3b82f6', link: '/patient-registry-file' },
     { id: 1, title: 'Appointments', icon: '📅', color: '#0066cc', link: '/patient-bookings?tab=all' },

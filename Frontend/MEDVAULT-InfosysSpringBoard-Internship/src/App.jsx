@@ -27,6 +27,7 @@ import AdminManagePatients from './components/AdminManagePatients';
 import NotificationsPage from './components/NotificationsPage';
 import PatientMedicalRecords from './components/PatientMedicalRecords';
 import DoctorMedicalRecords from './components/DoctorMedicalRecords';
+import PatientSettingsPage from './components/PatientSettingsPage';
 import './index.css';
 import Chatbot from './components/Chatbot';
 
@@ -99,6 +100,7 @@ const AppShell = () => {
         <Route path="/admin-doctors" element={<RequireRole roles={['admin']} element={<AdminManageDoctors />} />} />
         <Route path="/admin-patients" element={<RequireRole roles={['admin']} element={<AdminManagePatients />} />} />
         <Route path="/notifications" element={<RequireRole roles={['patient', 'doctor', 'admin', 'master_admin']} element={<NotificationsPage />} />} />
+        <Route path="/patient-settings" element={<RequireRole roles={['patient']} element={<PatientSettingsPage />} />} />
         <Route path="/patient-medical-records" element={<RequireRole roles={['patient']} element={<PatientMedicalRecords />} />} />
         <Route path="/doctor-medical-records" element={<RequireRole roles={['doctor']} element={<DoctorMedicalRecords />} />} />
 

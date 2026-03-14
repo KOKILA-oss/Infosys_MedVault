@@ -31,7 +31,12 @@ const parseAppointmentList = (text) => {
 
 const Chatbot = () => {
   const [message, setMessage] = useState("");
-  const [messages, setMessages] = useState([]);
+  const [messages, setMessages] = useState([
+    {
+      sender: "bot",
+      text: "Ask about upcoming appointments or say 'book appointment' to start. I will ask the reason first, then suggest doctors and available slots."
+    }
+  ]);
   const [isMinimized, setIsMinimized] = useState(false);
   const [isEnabled, setIsEnabled] = useState(true);
   const token = localStorage.getItem("token");

@@ -1,0 +1,87 @@
+.patient-settings-page {
+  min-height: 100vh;
+  background: var(--page-bg, #f5f8ff);
+  color: var(--text-primary, #132238);
+  padding: 32px 20px 48px;
+}
+
+.patient-settings-header {
+  max-width: 980px;
+  margin: 0 auto 24px;
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.patient-settings-header h1 {
+  margin: 0 0 8px;
+}
+
+.patient-settings-header p {
+  margin: 0;
+  color: var(--text-secondary, #5b6b7f);
+}
+
+.patient-settings-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.patient-settings-content {
+  max-width: 980px;
+  margin: 0 auto;
+}
+
+.settings-panel {
+  background: var(--card-bg, #ffffff);
+  border: 1px solid rgba(19, 34, 56, 0.08);
+  border-radius: 24px;
+  padding: 8px 24px;
+  box-shadow: 0 24px 60px rgba(18, 38, 63, 0.08);
+}
+
+.settings-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  padding: 24px 0;
+  border-bottom: 1px solid rgba(19, 34, 56, 0.08);
+}
+
+.settings-row:last-child {
+  border-bottom: none;
+}
+
+.settings-row h3 {
+  margin: 0 0 6px;
+}
+
+.settings-row p {
+  margin: 0;
+  color: var(--text-secondary, #5b6b7f);
+}
+
+.settings-status {
+  margin-top: 16px;
+  color: var(--text-secondary, #5b6b7f);
+}
+
+@media (max-width: 768px) {
+  .patient-settings-header,
+  .settings-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .patient-settings-actions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .patient-settings-actions button,
+  .settings-row button {
+    width: 100%;
+  }
+}
