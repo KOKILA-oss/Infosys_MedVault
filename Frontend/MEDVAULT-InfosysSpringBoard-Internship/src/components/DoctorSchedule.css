@@ -8,7 +8,8 @@
 }
 
 .doctor-schedule-header {
-  max-width: 1200px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto 1rem;
   display: flex;
   align-items: flex-start;
@@ -57,7 +58,8 @@
 }
 
 .calendar-card {
-  max-width: 1200px;
+  width: 100%;
+  max-width: none;
   margin: 0;
   border: 1px solid var(--border-light);
   border-radius: 18px;
@@ -69,10 +71,11 @@
 }
 
 .doctor-schedule-layout {
-  max-width: 1200px;
+  width: 100%;
+  max-width: none;
   margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(260px, 320px) minmax(0, 1fr);
+  grid-template-columns: minmax(360px, 460px) minmax(0, 1fr);
   gap: 1.25rem;
   align-items: start;
 }
@@ -83,57 +86,13 @@
   background: linear-gradient(150deg, var(--bg-card), color-mix(in srgb, var(--primary) 6%, var(--bg-secondary)));
   box-shadow: var(--shadow-sm);
   padding: 1rem;
-  height: fit-content;
+  display: grid;
+  gap: 0.9rem;
+  max-height: calc(100vh - 7rem);
+  overflow: auto;
+  overflow-x: hidden;
   position: sticky;
   top: 5.5rem;
-}
-
-.schedule-search {
-  width: 100%;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--bg-secondary) 92%, var(--bg-card));
-  color: var(--text-primary);
-  padding: 0.75rem 0.9rem;
-  margin-bottom: 0.9rem;
-}
-
-.schedule-patient-list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  max-height: 70vh;
-  overflow: auto;
-}
-
-.schedule-patient-item {
-  border: 1px solid var(--border-light);
-  border-radius: 12px;
-  background: linear-gradient(140deg, var(--bg-secondary), color-mix(in srgb, var(--primary) 6%, var(--bg-secondary)));
-  color: var(--text-primary);
-  padding: 0.8rem;
-  text-align: left;
-  display: flex;
-  flex-direction: column;
-  gap: 0.2rem;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.schedule-patient-item:hover {
-  border-color: var(--primary);
-  transform: translateY(-1px);
-}
-
-.schedule-patient-item.active {
-  border-color: var(--primary);
-  background: linear-gradient(130deg, color-mix(in srgb, var(--primary) 12%, var(--bg-secondary)), var(--bg-card));
-  box-shadow: var(--shadow-sm);
-}
-
-.schedule-patient-item span {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
 }
 
 .schedule-muted {
@@ -213,6 +172,11 @@
   border-color: color-mix(in srgb, var(--primary) 40%, var(--border-light));
 }
 
+.calendar-cell.day.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 45%, transparent);
+}
+
 .calendar-cell.day.busy {
   border-color: color-mix(in srgb, var(--warning) 40%, var(--border-light));
   background: color-mix(in srgb, var(--warning) 12%, var(--bg-secondary));
@@ -223,22 +187,131 @@
   font-weight: var(--weight-bold);
 }
 
-.approved-count {
-  font-size: var(--text-lg);
-  font-weight: var(--weight-extra);
-  line-height: 1;
-  color: var(--primary);
+.slot-count-label,
+.appointments-count-label {
+  font-size: 0.72rem;
+  line-height: 1.15;
+  padding: 0.16rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--bg-card) 75%, var(--bg-secondary));
+  color: var(--text-secondary);
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.calendar-cell.day.busy .approved-count {
-  color: var(--warning);
+.slot-count-label {
+  border-color: color-mix(in srgb, var(--primary) 30%, var(--border-light));
+  color: color-mix(in srgb, var(--primary) 70%, var(--text-primary));
 }
 
-.approved-label {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
+.appointments-count-label {
+  border-color: color-mix(in srgb, var(--success) 35%, var(--border-light));
+  color: color-mix(in srgb, var(--success) 70%, var(--text-primary));
+}
+
+.calendar-cell.day.busy .slot-count-label,
+.calendar-cell.day.busy .appointments-count-label {
+  border-color: color-mix(in srgb, var(--warning) 45%, var(--border-light));
+  color: color-mix(in srgb, var(--warning) 70%, var(--text-primary));
+}
+
+.default-schedule-card,
+.selected-day-card {
+  border: 1px solid var(--border-light);
+  border-radius: 14px;
+  padding: 0.9rem;
+  background: color-mix(in srgb, var(--bg-card) 88%, var(--bg-secondary));
+  display: grid;
+  gap: 0.8rem;
+}
+
+.schedule-card-head h4 {
+  font-size: var(--text-base);
+  margin-bottom: 0.25rem;
+}
+
+.schedule-card-head p {
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.slot-list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.slot-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.slot-row input[type='time'] {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 0.45rem 0.55rem;
+}
+
+.slot-row span {
   color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.slot-remove {
+  white-space: nowrap;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, var(--border));
+  border-radius: 10px;
+  padding: 0.45rem 0.7rem;
+  background: color-mix(in srgb, var(--danger) 10%, var(--bg-secondary));
+  color: color-mix(in srgb, var(--danger) 65%, var(--text-primary));
+  cursor: pointer;
+}
+
+.schedule-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.weekday-toggle-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.weekday-toggle-grid label {
+  border: 1px solid var(--border-light);
+  border-radius: 10px;
+  padding: 0.45rem 0.5rem;
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  font-size: var(--text-xs);
+}
+
+.offday-reason-field {
+  display: grid;
+  gap: 0.45rem;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+}
+
+.offday-reason-field input {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  padding: 0.6rem 0.75rem;
 }
 
 @media (max-width: 900px) {
@@ -261,5 +334,13 @@
 
   .schedule-sidebar {
     position: static;
+  }
+
+  .slot-row {
+    grid-template-columns: 1fr;
+  }
+
+  .weekday-toggle-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }
