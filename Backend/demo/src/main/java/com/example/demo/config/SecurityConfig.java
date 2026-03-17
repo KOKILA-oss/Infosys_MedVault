@@ -33,10 +33,10 @@ public class SecurityConfig {
                         "/api/auth/register/**",
                         "/api/auth/login/**",
                         "/api/auth/forgot-password/**",
-                        "/api/notifications/**",
-                        "/chat/**"
+                        "/api/notifications/**"
                 ).permitAll()
 
+                .requestMatchers("/api/chat/**").authenticated()
                 .requestMatchers("/api/patient/**").hasRole("PATIENT")
                 .requestMatchers("/api/appointments/available").hasRole("PATIENT")
 

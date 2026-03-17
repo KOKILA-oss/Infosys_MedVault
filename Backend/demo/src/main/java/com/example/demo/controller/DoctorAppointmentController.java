@@ -13,15 +13,20 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.demo.dto.RescheduleRequest;
 import com.example.demo.dto.UpdateStatusRequest;
 import com.example.demo.service.AppointmentService;
+import com.example.demo.dto.DoctorPatientVisitEntryRequest;
+import com.example.demo.service.DoctorPatientRegistryService;
 
     @RestController
 @RequestMapping("/api/doctor/appointments")
 public class DoctorAppointmentController {
 
     private final AppointmentService appointmentService;
+    private final DoctorPatientRegistryService doctorPatientRegistryService;
 
-    public DoctorAppointmentController(AppointmentService appointmentService) {
+    public DoctorAppointmentController(AppointmentService appointmentService,
+                                       DoctorPatientRegistryService doctorPatientRegistryService) {
         this.appointmentService = appointmentService;
+        this.doctorPatientRegistryService = doctorPatientRegistryService;
     }
 
     // Get all doctor appointments
@@ -52,7 +57,16 @@ public class DoctorAppointmentController {
         String doctorEmail = authentication.getName();
 
         return ResponseEntity.ok(
-                appointmentService.getDoctorPatientRegistry(doctorEmail)
+                doctorPatientRegistryService.getDoctorPatientRegistry(doctorEmail)
+        );
+    }
+
+    @PostMapping("/patients/{patientId}/visit-entry")
+    public ResponseEntity<?> saveVisitEntry(@PathVariable Long patientId,
+                                            @RequestBody DoctorPatientVisitEntryRequest request,
+                                            Authentication authentication) {
+        return ResponseEntity.ok(
+                doctorPatientRegistryService.saveVisitEntry(patientId, request, authentication.getName())
         );
     }
 

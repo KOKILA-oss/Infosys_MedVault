@@ -33,4 +33,11 @@ public class FeedbackController {
                 feedbackService.getDoctorFeedbacks(authentication.getName())
         );
     }
+
+    @GetMapping("/mine")
+    public ResponseEntity<?> getMyFeedbacks(Authentication authentication) {
+        return ResponseEntity.ok(
+                feedbackService.getPatientFeedbacks(authentication.getName())
+        );
+    }
 }

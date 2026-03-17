@@ -177,6 +177,22 @@
   color: var(--text-secondary);
 }
 
+.calendar-link-btn {
+  margin-top: 0.65rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary), var(--accent));
+  color: var(--text-inverse);
+  font-weight: var(--weight-bold);
+  box-shadow: var(--shadow-sm);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.calendar-link-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-md);
+}
+
 @media (max-width: 768px) {
   .notifications-page {
     padding: 1rem;

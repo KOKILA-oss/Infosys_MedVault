@@ -41,9 +41,11 @@ public class PatientMedicalRecordController {
                                                               @RequestParam("file") MultipartFile file,
                                                               @RequestParam("title") String title,
                                                               @RequestParam(value = "description", required = false) String description,
-                                                              @RequestParam("category") MedicalRecordCategory category) {
+                                                              @RequestParam("category") MedicalRecordCategory category,
+                                                              @RequestParam(value = "sharedDoctorId", required = false) Long sharedDoctorId,
+                                                              @RequestParam(value = "appointmentId", required = false) Long appointmentId) {
         return ResponseEntity.ok(
-                medicalRecordService.uploadRecord(principal.getName(), file, title, description, category)
+                medicalRecordService.uploadRecord(principal.getName(), file, title, description, category, sharedDoctorId, appointmentId)
         );
     }
 

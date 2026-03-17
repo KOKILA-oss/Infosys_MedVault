@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import axios from "axios";
 
 const parseAppointmentList = (text) => {
@@ -33,23 +33,24 @@ const Chatbot = () => {
   const [message, setMessage] = useState("");
   const [messages, setMessages] = useState([]);
   const [isMinimized, setIsMinimized] = useState(false);
+  const [isEnabled, setIsEnabled] = useState(true);
+  const token = localStorage.getItem("token");
 
-  const extractBotText = (data) => {
-    if (typeof data === "string") {
+  useEffect(() => {
+    const loadSettings = async () => {
       try {
-        const parsed = JSON.parse(data);
-        return parsed?.choices?.[0]?.message?.content ?? data;
-      } catch {
-        return data;
+        if (!token) return;
+        const response = await axios.get("/api/patient/settings", {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setIsEnabled(response.data?.chatbotEnabled !== false);
+      } catch (error) {
+        console.error("Failed to load chatbot settings", error);
       }
-    }
+    };
 
-    if (data && typeof data === "object") {
-      return data?.choices?.[0]?.message?.content ?? JSON.stringify(data);
-    }
-
-    return "No response received.";
-  };
+    loadSettings();
+  }, [token]);
 
   const sendMessage = async () => {
     if (!message.trim()) return;
@@ -59,16 +60,16 @@ const Chatbot = () => {
 
     try {
       const res = await axios.post(
-        "http://localhost:8080/chat",
+        "/api/chat",
         { message },
         {
           headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`
+            Authorization: `Bearer ${token}`
           }
         }
       );
 
-      const botText = extractBotText(res.data);
+      const botText = res.data?.reply || "No response received.";
       const botMsg = { sender: "bot", text: botText };
       setMessages((prev) => [...prev, botMsg]);
     } catch (error) {
@@ -84,6 +85,7 @@ const Chatbot = () => {
   };
 
   if (isMinimized) {
+    if (!isEnabled) return null;
     return (
       <button
         type="button"
@@ -98,6 +100,10 @@ const Chatbot = () => {
         <span style={styles.minimizedLabel}>Ask MedBot your query</span>
       </button>
     );
+  }
+
+  if (!isEnabled) {
+    return null;
   }
 
   return (
@@ -165,7 +171,7 @@ const Chatbot = () => {
           style={styles.input}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
-          placeholder="Ask MedBot anything..."
+          placeholder="Dr. Name, date, time, reason (e.g. Dr. Aashish, 28/03/2026, 3:00 PM, knee pain)"
           onKeyDown={(e) => {
             if (e.key === "Enter") {
               sendMessage();

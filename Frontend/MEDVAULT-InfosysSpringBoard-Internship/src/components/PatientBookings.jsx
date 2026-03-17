@@ -1,18 +1,26 @@
-
 import React, { useEffect, useState } from 'react';
 import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './PatientBookings.css';
-import DatePicker from "react-datepicker";
-import "react-datepicker/dist/react-datepicker.css";
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
 
 const formatDateLabel = (dateValue) => {
-  const date = new Date(dateValue);
+  const [year, month, day] = String(dateValue).split('-').map(Number);
+  const date = new Date(year, (month || 1) - 1, day || 1);
   return date.toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     weekday: 'short'
   });
+};
+
+const formatDateForApi = (date) => {
+  if (!date) return '';
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, '0');
+  const day = `${date.getDate()}`.padStart(2, '0');
+  return `${year}-${month}-${day}`;
 };
 
 const formatTimeLabel = (timeValue) => {
@@ -34,19 +42,17 @@ const PatientBookings = () => {
   const [appointments, setAppointments] = useState([]);
   const [doctors, setDoctors] = useState([]);
   const [doctorId, setDoctorId] = useState('');
-
   const [selectedDateObj, setSelectedDateObj] = useState(null);
-  const [selectedDate, setSelectedDate] = useState(''); // ✅ FIXED
-
+  const [selectedDate, setSelectedDate] = useState('');
   const [availableTimes, setAvailableTimes] = useState([]);
   const [selectedTime, setSelectedTime] = useState('');
   const [concern, setConcern] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [availabilityMessage, setAvailabilityMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  /* ===============================
-     Fetch Doctors
-  =============================== */
+  const selectedDoctor = doctors.find((item) => String(item.id) === String(doctorId)) || null;
+
   useEffect(() => {
     if (!token) return;
 
@@ -55,9 +61,10 @@ const PatientBookings = () => {
         const resp = await axios.get('/api/doctors', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setDoctors(resp.data || []);
-        if (resp.data?.length > 0) {
-          setDoctorId(String(resp.data[0].id));
+        const list = Array.isArray(resp.data) ? resp.data : [];
+        setDoctors(list);
+        if (list.length > 0) {
+          setDoctorId(String(list[0].id));
         }
       } catch (err) {
         console.error('Failed to load doctors', err);
@@ -67,9 +74,6 @@ const PatientBookings = () => {
     loadDoctors();
   }, [token]);
 
-  /* ===============================
-     Fetch Patient Appointments
-  =============================== */
   const fetchAppointments = async () => {
     if (!token) return;
 
@@ -77,7 +81,7 @@ const PatientBookings = () => {
       const resp = await axios.get('/api/patient/appointments', {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setAppointments(resp.data || []);
+      setAppointments(Array.isArray(resp.data) ? resp.data : []);
     } catch (err) {
       console.error('Failed to load appointments', err);
     }
@@ -87,9 +91,6 @@ const PatientBookings = () => {
     fetchAppointments();
   }, [token]);
 
-  /* ===============================
-     Sync Tab With URL
-  =============================== */
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const tab = params.get('tab');
@@ -98,63 +99,45 @@ const PatientBookings = () => {
     }
   }, [location.search]);
 
-  /* ===============================
-     Fetch Available Slots
-  =============================== */
-  // useEffect(() => {
-  //   const loadSlots = async () => {
-  //     if (!doctorId || !selectedDate) {
-  //       setAvailableTimes([]);
-  //       return;
-  //     }
-
-  //     try {
-  //       const resp = await axios.get('/api/doctor/appointments/available', {
-  //         params: { doctorId, date: selectedDate },
-  //         headers: { Authorization: `Bearer ${token}` }
-  //       });
-
-  //       setAvailableTimes(resp.data || []);
-  //     } catch (err) {
-  //       console.error('Failed to load slots', err);
-  //       setAvailableTimes([]);
-  //     }
-  //   };
-
-  //   loadSlots();
-  // }, [doctorId, selectedDate, token]);
   useEffect(() => {
-  if (!doctorId || !selectedDate) {
-    setAvailableTimes([]);
-    return;
-  }
+    if (!doctorId || !selectedDate) {
+      setAvailableTimes([]);
+      setAvailabilityMessage('');
+      return;
+    }
 
-  // 🔥 DEMO MODE SLOTS
-  const demoSlots = [
-    "09:00",
-    "10:00",
-    "11:00",
-    "12:00",
-    "14:00",
-    "15:00",
-    "16:00"
-  ];
+    const loadAvailability = async () => {
+      try {
+        const resp = await axios.get('/api/appointments/available', {
+          params: {
+            doctorId: Number(doctorId),
+            date: selectedDate
+          },
+          headers: { Authorization: `Bearer ${token}` }
+        });
 
-  setAvailableTimes(demoSlots);
+        const slots = Array.isArray(resp.data?.availableSlots) ? resp.data.availableSlots : [];
+        setAvailableTimes(slots);
+        setAvailabilityMessage(resp.data?.unavailableReason || '');
 
-}, [doctorId, selectedDate]);
+        if (!slots.includes(selectedTime)) {
+          setSelectedTime('');
+        }
+      } catch (err) {
+        console.error('Failed to load available slots', err);
+        setAvailableTimes([]);
+        setAvailabilityMessage(err.response?.data?.message || 'Unable to load available slots right now.');
+      }
+    };
 
-  /* ===============================
-     Tab Switch
-  =============================== */
+    loadAvailability();
+  }, [doctorId, selectedDate, token]);
+
   const handleTabChange = (tab) => {
     setActiveTab(tab);
     navigate(`/patient-bookings?tab=${tab}`);
   };
 
-  /* ===============================
-     Book Appointment
-  =============================== */
   const handleBook = async () => {
     if (!doctorId || !selectedDate || !selectedTime || !concern.trim()) {
       setSuccessMessage('Please complete all fields.');
@@ -176,17 +159,14 @@ const PatientBookings = () => {
       );
 
       setSuccessMessage('Appointment booked successfully (Pending approval).');
-      // Notifications are created server-side by the booking endpoint.
       setSelectedTime('');
       setConcern('');
       setSelectedDate('');
-      setSelectedDateObj(null); // ✅ reset calendar
+      setSelectedDateObj(null);
       fetchAppointments();
       setActiveTab('all');
     } catch (err) {
-      setSuccessMessage(
-        err.response?.data?.message || 'Slot may already be booked.'
-      );
+      setSuccessMessage(err.response?.data?.message || 'Slot may already be booked.');
     } finally {
       setLoading(false);
     }
@@ -239,31 +219,27 @@ const PatientBookings = () => {
           ) : (
             <div className="appointments-list">
               {appointments.map((item) => (
-  <div key={item.id} className="appointment-row">
-    <h3>{item.doctorName}</h3>
+                <div key={item.id} className="appointment-row">
+                  <h3>{item.doctorName}</h3>
 
-    <p>
-      {formatDateLabel(item.appointmentDate)} •{' '}
-      {formatTimeLabel(item.appointmentTime)}
-    </p>
+                  <p>
+                    {formatDateLabel(item.appointmentDate)} • {formatTimeLabel(item.appointmentTime)}
+                  </p>
 
-    <span className={`status-pill ${item.status}`}>
-      {item.status}
-    </span>
+                  <span className={`status-pill ${String(item.status || '').toLowerCase()}`}>
+                    {item.status}
+                  </span>
 
-    {/* 🔥 ADD THIS PART */}
-    {item.status === "COMPLETED" && (
-      <button
-        className="rate-btn"
-        onClick={() =>
-          navigate(`/patient-ratings-reviews?appointmentId=${item.id}`)
-        }
-      >
-        Rate the Experience
-      </button>
-    )}
-  </div>
-))}
+                  {item.status === 'COMPLETED' && (
+                    <button
+                      className="rate-btn"
+                      onClick={() => navigate(`/patient-ratings-reviews?appointmentId=${item.id}`)}
+                    >
+                      Rate the Experience
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -282,19 +258,28 @@ const PatientBookings = () => {
             {doctors.map((doctor) => (
               <option key={doctor.id} value={doctor.id}>
                 {doctor.name}
-                {doctor.specialization
-                  ? ` • ${doctor.specialization}`
-                  : ''}
+                {doctor.specialization ? ` • ${doctor.specialization}` : ''}
               </option>
             ))}
           </select>
+
+          {selectedDoctor ? (
+            <div className="doctor-rating-card">
+              <div>
+                <h3>{selectedDoctor.name}</h3>
+                <p>
+                  {selectedDoctor.specialization || 'General Consultation'}
+                  {selectedDoctor.hospitalName ? ` • ${selectedDoctor.hospitalName}` : ''}
+                </p>
+              </div>
+            </div>
+          ) : null}
 
           <DatePicker
             selected={selectedDateObj}
             onChange={(date) => {
               setSelectedDateObj(date);
-              const formatted = date.toISOString().slice(0, 10);
-              setSelectedDate(formatted);
+              setSelectedDate(formatDateForApi(date));
             }}
             minDate={new Date()}
             placeholderText="Select appointment date"
@@ -303,15 +288,13 @@ const PatientBookings = () => {
 
           <div className="time-grid">
             {availableTimes.length === 0 ? (
-              <p className="no-slots">No slots available</p>
+              <p className="no-slots">{availabilityMessage || 'No slots available'}</p>
             ) : (
               availableTimes.map((time) => (
                 <button
                   key={time}
                   onClick={() => setSelectedTime(time)}
-                  className={`time-btn ${
-                    selectedTime === time ? 'active' : ''
-                  }`}
+                  className={`time-btn ${selectedTime === time ? 'active' : ''}`}
                 >
                   {formatTimeLabel(time)}
                 </button>
@@ -326,7 +309,7 @@ const PatientBookings = () => {
             placeholder="Describe your concern"
           />
 
-          {successMessage && <p className="feedback">{successMessage}</p>}
+          {successMessage ? <p className="feedback">{successMessage}</p> : null}
 
           <button
             className="primary-btn"

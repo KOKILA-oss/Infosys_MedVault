@@ -3,9 +3,8 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import './DoctorDashboard.css';
 
-const APPOINTMENTS_KEY = 'patientAppointments';
 const DOCTOR_LEAVE_DATES_KEY = 'doctorLeaveDates';
-const REVIEWS_KEY = 'patientDoctorRatings';
+const REGISTRY_KEY = 'doctorPatientRegistry';
 
 const formatTimeLabel = (timeValue) => {
   if (!timeValue) return '';
@@ -18,14 +17,42 @@ const formatTimeLabel = (timeValue) => {
   });
 };
 
+const buildSparklinePoints = (values) => {
+  const safeValues = Array.isArray(values) && values.length ? values : [0];
+  const maxValue = Math.max(...safeValues, 1);
+  const step = safeValues.length > 1 ? 120 / (safeValues.length - 1) : 120;
+
+  return safeValues
+    .map((value, index) => {
+      const x = Math.round(index * step);
+      const y = Math.round(34 - ((Number(value) || 0) / maxValue) * 22);
+      return `${x},${y}`;
+    })
+    .join(' ');
+};
+
+const parseAppointmentDateTime = (appointment) => {
+  if (!appointment?.appointmentDate) return null;
+  const dateTime = new Date(`${appointment.appointmentDate}T${appointment.appointmentTime || appointment.time || '00:00'}`);
+  return Number.isNaN(dateTime.getTime()) ? null : dateTime;
+};
+
+const getPatientName = (appointment) =>
+  appointment?.patientName ||
+  appointment?.patient?.name ||
+  appointment?.patient?.fullName ||
+  'Patient';
+
+const defaultDoctorSettings = {
+  scheduleReminders: true,
+  availabilityVisible: true,
+  themePreference: 'light'
+};
+
 const getInitials = (name) => {
-  if (!name) {
-    return 'P';
-  }
+  if (!name) return 'P';
   const parts = name.trim().split(' ').filter(Boolean);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 2).toUpperCase();
-  }
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
 };
 
@@ -45,14 +72,31 @@ const parseStoredLeaveDates = () => {
   }
 };
 
-const parseStoredRatings = () => {
+const parseStoredRegistry = () => {
   try {
-    const parsed = JSON.parse(localStorage.getItem(REVIEWS_KEY) || '{}');
+    const parsed = JSON.parse(localStorage.getItem(REGISTRY_KEY) || '{}');
     return parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     return {};
   }
 };
+
+const normalizeDoctorIdentifier = (value) => (value || '').trim().toLowerCase();
+
+const canDoctorAccessReport = (report, doctor) => {
+  const selectedName = normalizeDoctorIdentifier(report?.visibleToDoctorName);
+  const selectedEmail = normalizeDoctorIdentifier(report?.visibleToDoctorEmail);
+  const doctorName = normalizeDoctorIdentifier(doctor?.name);
+  const doctorEmail = normalizeDoctorIdentifier(doctor?.email);
+
+  if (!selectedName && !selectedEmail) return true;
+  if (selectedEmail && doctorEmail && selectedEmail === doctorEmail) return true;
+  if (selectedName && doctorName && selectedName === doctorName) return true;
+  return false;
+};
+
+const isApprovedAppointment = (appointment) => (appointment?.status || '').toUpperCase() === 'APPROVED';
+const isCompletedAppointment = (appointment) => (appointment?.status || '').toUpperCase() === 'COMPLETED';
 
 const DoctorDashboard = () => {
   const navigate = useNavigate();
@@ -60,43 +104,31 @@ const DoctorDashboard = () => {
   const [userName, setUserName] = useState('');
   const [todayAppointments, setTodayAppointments] = useState([]);
   const [allAppointments, setAllAppointments] = useState([]);
-  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
+  const unreadNotificationCount = 0;
   const [approvedCountByDate, setApprovedCountByDate] = useState({});
+  const [approvedAppointmentsByDate, setApprovedAppointmentsByDate] = useState({});
   const [leaveDates, setLeaveDates] = useState([]);
   const [showInsightsPreview, setShowInsightsPreview] = useState(false);
+  const [doctorFeedbacks, setDoctorFeedbacks] = useState([]);
+  const [doctorIdentity, setDoctorIdentity] = useState({ name: '', email: '' });
+  const [registryData, setRegistryData] = useState({});
+  const [doctorSettings, setDoctorSettings] = useState(defaultDoctorSettings);
+  const [settingsStatus, setSettingsStatus] = useState('');
+  const [lastAnalysisRefresh, setLastAnalysisRefresh] = useState(null);
 
   useEffect(() => {
     setLeaveDates(parseStoredLeaveDates());
+    const loadRegistry = () => setRegistryData(parseStoredRegistry());
+    loadRegistry();
+    globalThis.addEventListener('focus', loadRegistry);
+    globalThis.addEventListener('storage', loadRegistry);
+    return () => {
+      globalThis.removeEventListener('focus', loadRegistry);
+      globalThis.removeEventListener('storage', loadRegistry);
+    };
   }, []);
 
-useEffect(() => {
-  const fetchUnreadCount = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
-
-      const resp = await axios.get('/api/notifications/unread-count', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      setUnreadNotificationCount(resp.data || 0);
-    } catch (err) {
-      console.error('Failed to fetch unread count', err);
-    }
-  };
-
-  fetchUnreadCount();
-  const onNotificationsUpdated = () => fetchUnreadCount();
-  window.addEventListener('notifications:updated', onNotificationsUpdated);
-
-  // Optional: refresh every 10 seconds
-  const interval = setInterval(fetchUnreadCount, 10000);
-
-  return () => {
-    window.removeEventListener('notifications:updated', onNotificationsUpdated);
-    clearInterval(interval);
-  };
-}, []);
+  useEffect(() => {}, []);
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme') || 'light';
@@ -104,120 +136,220 @@ useEffect(() => {
     document.documentElement.dataset.theme = savedTheme;
   }, []);
 
- useEffect(() => {
-  const loadAppointments = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) throw new Error('No token');
+  useEffect(() => {
+    const loadAppointments = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) throw new Error('No token');
 
-      const resp = await axios.get('/api/doctor/appointments', {
-  headers: { Authorization: `Bearer ${token}` }
-});
-      const data = resp.data || [];
-      setAllAppointments(Array.isArray(data) ? data : []);
+        const resp = await axios.get('/api/doctor/appointments', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = Array.isArray(resp.data) ? resp.data : [];
+        setAllAppointments(data);
 
-      const approvedCounts = data.reduce((acc, item) => {
-        if ((item.status || '').toUpperCase() !== 'APPROVED' || !item.appointmentDate) return acc;
-        acc[item.appointmentDate] = (acc[item.appointmentDate] || 0) + 1;
-        return acc;
-      }, {});
-      setApprovedCountByDate(approvedCounts);
+        const approvedMap = data.reduce((acc, item) => {
+          if (!isApprovedAppointment(item) || !item?.appointmentDate) return acc;
 
-      const now = new Date();
-
-      const upcoming = data
-        .filter((item) => item.status === 'APPROVED')
-        .map((item) => {
-          const patientName =
-            item.patientName ||
-            (item.patient && (item.patient.name || item.patient.fullName)) ||
-            'Patient';
-
-          const time = item.appointmentTime || item.time || '';
-
-          const dateTime = new Date(
-            `${item.appointmentDate}T${time}`
-          );
-
-          return {
+          const dateKey = item.appointmentDate;
+          const appointment = {
             id: item.id,
-            patientName,
+            patientName: getPatientName(item),
             department: item.department || '',
             hospital: item.hospital || '',
-            time,
-            appointmentDate: item.appointmentDate,
-            appointmentTime: time,
-            dateTime,
-            status: item.status
+            time: item.appointmentTime || item.time || '',
+            appointmentDate: item.appointmentDate
           };
-        })
-        .filter((item) => item.dateTime && item.dateTime >= now)
-        .sort((a, b) => a.dateTime - b.dateTime);
 
-      setTodayAppointments(upcoming);
-    } catch (err) {
-      console.error('Failed to load appointments', err);
-      setTodayAppointments([]);
-      setAllAppointments([]);
-    }
-  };
+          if (!acc[dateKey]) {
+            acc[dateKey] = [];
+          }
 
-  loadAppointments();
-}, []);
+          acc[dateKey].push(appointment);
+          return acc;
+        }, {});
 
+        Object.values(approvedMap).forEach((appointments) => {
+          appointments.sort((first, second) => (first.time || '').localeCompare(second.time || ''));
+        });
+
+        setApprovedAppointmentsByDate(approvedMap);
+        setApprovedCountByDate(
+          Object.fromEntries(Object.entries(approvedMap).map(([dateKey, appointments]) => [dateKey, appointments.length]))
+        );
+
+        const now = new Date();
+        const upcoming = data
+          .filter((item) => isApprovedAppointment(item))
+          .map((item) => {
+            const dateTime = parseAppointmentDateTime(item);
+
+            return {
+              id: item.id,
+              patientName: getPatientName(item),
+              department: item.department || '',
+              hospital: item.hospital || '',
+              time: item.appointmentTime || item.time || '',
+              appointmentDate: item.appointmentDate,
+              dateTime,
+              status: item.status
+            };
+          })
+          .filter((item) => item.dateTime && item.dateTime >= now)
+          .sort((a, b) => a.dateTime - b.dateTime);
+
+        setTodayAppointments(upcoming);
+        setLastAnalysisRefresh(new Date());
+      } catch (err) {
+        console.error('Failed to load appointments', err);
+        setTodayAppointments([]);
+        setAllAppointments([]);
+        setApprovedAppointmentsByDate({});
+        setApprovedCountByDate({});
+      }
+    };
+
+    loadAppointments();
+    const interval = setInterval(loadAppointments, 15000);
+    window.addEventListener('focus', loadAppointments);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', loadAppointments);
+    };
+  }, []);
 
   useEffect(() => {
-  const fetchDoctorProfile = async () => {
-    try {
-      const token = localStorage.getItem('token');
-      if (!token) return;
+    const fetchDoctorProfile = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
 
-      const response = await axios.get('/api/doctor/profile', {
-        headers: {
-          Authorization: `Bearer ${token}`
+        const response = await axios.get('/api/doctor/profile', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+
+        const doctor = response.data;
+        const name = doctor?.user?.name;
+        const email = doctor?.user?.email || doctor?.email || '';
+
+        setUserName(name || 'Doctor');
+        setDoctorIdentity({ name: name || '', email });
+      } catch (error) {
+        console.error('Failed to fetch doctor profile', error);
+      }
+    };
+
+    fetchDoctorProfile();
+  }, []);
+
+  useEffect(() => {
+    const loadFeedbacks = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) {
+          setDoctorFeedbacks([]);
+          return;
         }
-      });
 
-      const doctor = response.data;
+        const response = await axios.get('/api/feedback/doctor', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setDoctorFeedbacks(Array.isArray(response.data) ? response.data : []);
+        setLastAnalysisRefresh(new Date());
+      } catch (error) {
+        console.error('Failed to load doctor feedbacks', error);
+        setDoctorFeedbacks([]);
+      }
+    };
 
-      // Adjust field name based on your backend
-      const name = doctor?.user?.name;
+    loadFeedbacks();
+    const interval = setInterval(loadFeedbacks, 15000);
+    window.addEventListener('focus', loadFeedbacks);
 
-      setUserName(name || 'Doctor');
-    } catch (error) {
-      console.error('Failed to fetch doctor profile', error);
-    }
-  };
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', loadFeedbacks);
+    };
+  }, []);
 
-  fetchDoctorProfile();
-}, []);
+  useEffect(() => {
+    const loadDoctorSettings = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
 
+        const response = await axios.get('/api/doctor/settings', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        const nextSettings = { ...defaultDoctorSettings, ...(response.data || {}) };
+        setDoctorSettings(nextSettings);
+
+        const savedTheme = localStorage.getItem('theme');
+        if (!savedTheme && nextSettings.themePreference) {
+          document.documentElement.dataset.theme = nextSettings.themePreference;
+          setTheme(nextSettings.themePreference);
+        }
+      } catch (error) {
+        console.error('Failed to load doctor settings', error);
+      }
+    };
+
+    loadDoctorSettings();
+  }, []);
 
   const toggleTheme = () => {
     const newTheme = theme === 'light' ? 'dark' : 'light';
     setTheme(newTheme);
     localStorage.setItem('theme', newTheme);
     document.documentElement.dataset.theme = newTheme;
+    setDoctorSettings((prev) => ({ ...prev, themePreference: newTheme }));
+    setSettingsStatus('Theme updated. Save settings to keep this preference.');
   };
 
-  const handleLogout = () => {
-    navigate('/');
-  };
-
-  const handleProfileClick = () => {
-    navigate('/doctor-profile');
-  };
-
+  const handleLogout = () => navigate('/');
+  const handleProfileClick = () => navigate('/doctor-profile');
   const handleNavClick = (event, link) => {
     if (link?.startsWith('/')) {
       event.preventDefault();
       navigate(link);
     }
   };
-
   const handleCardAction = (link) => {
-    if (link?.startsWith('/')) {
-      navigate(link);
+    if (link?.startsWith('/')) navigate(link);
+  };
+  const handleSettingsChange = (field) => {
+    setDoctorSettings((prev) => ({ ...prev, [field]: !prev[field] }));
+    setSettingsStatus('');
+  };
+
+  const saveDoctorSettings = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        setSettingsStatus('Please log in again to save settings.');
+        return;
+      }
+
+      const response = await axios.put('/api/doctor/settings', doctorSettings, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      const savedSettings = { ...defaultDoctorSettings, ...(response.data || {}) };
+      setDoctorSettings(savedSettings);
+      setSettingsStatus('Settings saved.');
+
+      if (savedSettings.themePreference) {
+        setTheme(savedSettings.themePreference);
+        localStorage.setItem('theme', savedSettings.themePreference);
+        document.documentElement.dataset.theme = savedSettings.themePreference;
+      }
+    } catch (error) {
+      console.error('Failed to save doctor settings', error);
+      setSettingsStatus('Unable to save settings.');
     }
   };
 
@@ -244,6 +376,7 @@ useEffect(() => {
         dateKey,
         isBusy: leaveDates.includes(dateKey),
         approvedCount: approvedCountByDate[dateKey] || 0,
+        approvedAppointments: approvedAppointmentsByDate[dateKey] || [],
         isToday: dateKey === formatDateKey(new Date())
       });
     }
@@ -252,83 +385,80 @@ useEffect(() => {
       monthLabel: new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       cells
     };
-  }, [leaveDates, approvedCountByDate]);
-
+  }, [leaveDates, approvedAppointmentsByDate, approvedCountByDate]);
 
   const dashboardCards = [
-    {
-      id: 0,
-      title: 'Overview',
-      icon: '✨',
-      color: '#3b82f6',
-      link: '#summary'
-    },
-    {
-      id: 1,
-      title: 'Patients',
-      icon: '👥',
-      color: '#0066cc',
-      link: '/doctor-patient-registry'
-    },
-    {
-      id: 2,
-      title: 'Appointments',
-      icon: '📅',
-      color: '#00b8a9',
-      link: '/doctor-bookings'
-    },
-    {
-      id: 3,
-      title: 'Schedule',
-      icon: '🗓️',
-      color: '#9b59b6',
-      link: '/doctor-schedule'
-    },
-    {
-      id: 4,
-      title: 'Analytics',
-      icon: '📈',
-      color: '#f39c12',
-      link: '#analytics'
-    },
-    {
-      id: 5,
-      title: 'Reports',
-      icon: '📄',
-      color: '#4f46e5',
-      link: '/doctor-reports'
-    },
-    {
-      id: 6,
-      title: 'Settings',
-      icon: '⚙️',
-      color: '#34495e',
-      link: '#settings'
-    }
+    { id: 0, title: 'Overview', icon: 'Overview', color: '#3b82f6', link: '#summary' },
+    { id: 1, title: 'Patients', icon: 'Patients', color: '#0066cc', link: '/doctor-patient-registry' },
+    { id: 2, title: 'Appointments', icon: 'Calendar', color: '#00b8a9', link: '/doctor-bookings' },
+    { id: 3, title: 'Schedule', icon: 'Schedule', color: '#9b59b6', link: '/doctor-schedule' },
+    { id: 4, title: 'Analytics', icon: 'Analytics', color: '#f39c12', link: '#analytics' },
+    { id: 5, title: 'Prescriptions', icon: 'Rx', color: '#34495e', link: '/doctor-prescriptions' }
   ];
 
   const analyticsMetrics = useMemo(() => {
     const now = new Date();
     const todayKey = formatDateKey(now);
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
 
-    const weekStart = new Date(now);
-    weekStart.setHours(0, 0, 0, 0);
-    weekStart.setDate(weekStart.getDate() - 6);
+    const dailySeries = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(startOfToday);
+      date.setDate(startOfToday.getDate() - (6 - index));
+      const dateKey = formatDateKey(date);
+      return {
+        label: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        dateKey,
+        count: allAppointments.filter((item) => {
+          const appointmentDate = parseAppointmentDateTime(item);
+          return appointmentDate && formatDateKey(appointmentDate) === dateKey && isApprovedAppointment(item);
+        }).length
+      };
+    });
 
-    const monthStart = new Date(now);
-    monthStart.setHours(0, 0, 0, 0);
-    monthStart.setDate(monthStart.getDate() - 29);
+    const upcomingWeekSeries = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(startOfToday);
+      date.setDate(startOfToday.getDate() + index);
+      const dateKey = formatDateKey(date);
+      return {
+        label: date.toLocaleDateString('en-US', { weekday: 'short' }),
+        dateKey,
+        count: allAppointments.filter((item) => {
+          const appointmentDate = parseAppointmentDateTime(item);
+          return appointmentDate && formatDateKey(appointmentDate) === dateKey && isApprovedAppointment(item);
+        }).length
+      };
+    });
 
-    const appointmentDates = allAppointments
-      .filter((item) => (item?.status || '').toUpperCase() !== 'REJECTED' && item?.appointmentDate)
-      .map((item) => new Date(`${item.appointmentDate}T00:00:00`))
-      .filter((date) => !Number.isNaN(date.getTime()));
+    const monthlySeries = Array.from({ length: 4 }, (_, index) => {
+      const periodEnd = new Date(startOfToday);
+      periodEnd.setDate(startOfToday.getDate() - (3 - index) * 7);
+      const periodStart = new Date(periodEnd);
+      periodStart.setDate(periodEnd.getDate() - 6);
 
-    const dailyAppointments = appointmentDates.filter((date) => formatDateKey(date) === todayKey).length;
-    const lastWeekAppointments = appointmentDates.filter((date) => date >= weekStart && date <= now).length;
-    const oneMonthAppointments = appointmentDates.filter((date) => date >= monthStart && date <= now).length;
+      const count = allAppointments.filter((item) => {
+        const appointmentDate = parseAppointmentDateTime(item);
+        return appointmentDate && appointmentDate >= periodStart && appointmentDate <= periodEnd && isCompletedAppointment(item);
+      }).length;
 
-    const ratings = Object.values(parseStoredRatings())
+      return {
+        label: `${periodStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`,
+        count
+      };
+    });
+
+    const dailyAppointments = dailySeries[dailySeries.length - 1]?.count || 0;
+    const lastWeekAppointments = dailySeries.reduce((sum, item) => sum + item.count, 0);
+    const oneMonthAppointments = monthlySeries.reduce((sum, item) => sum + item.count, 0);
+    const upcomingWeekAppointments = upcomingWeekSeries.reduce((sum, item) => sum + item.count, 0);
+
+    const ratings = doctorFeedbacks
+      .map((item) => Number(item?.rating || 0))
+      .filter((value) => value > 0);
+
+    const latestRatings = [...doctorFeedbacks]
+      .sort((first, second) => new Date(first?.createdAt || 0) - new Date(second?.createdAt || 0))
+      .slice(-7)
       .map((item) => Number(item?.rating || 0))
       .filter((value) => value > 0);
 
@@ -340,10 +470,15 @@ useEffect(() => {
       dailyAppointments,
       lastWeekAppointments,
       oneMonthAppointments,
+      upcomingWeekAppointments,
       avgRating,
-      totalRatings: ratings.length
+      totalRatings: ratings.length,
+      dailySeries,
+      upcomingWeekSeries,
+      monthlySeries,
+      latestRatings
     };
-  }, [allAppointments]);
+  }, [allAppointments, doctorFeedbacks]);
 
   return (
     <div className="dashboard-container">
@@ -352,9 +487,9 @@ useEffect(() => {
           <div className="logo-section">
             <div className="logo-icon-small">
               <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 17L12 22L22 17" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M2 12L12 17L22 12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </div>
             <span className="logo-title">MedVault</span>
@@ -364,19 +499,19 @@ useEffect(() => {
             <button onClick={toggleTheme} className="theme-toggle" aria-label="Toggle theme">
               {theme === 'light' ? (
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               ) : (
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2"/>
-                  <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                  <circle cx="12" cy="12" r="5" stroke="currentColor" strokeWidth="2" />
+                  <line x1="12" y1="1" x2="12" y2="3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="12" y1="21" x2="12" y2="23" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="4.22" y1="4.22" x2="5.64" y2="5.64" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="18.36" y1="18.36" x2="19.78" y2="19.78" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="1" y1="12" x2="3" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="21" y1="12" x2="23" y2="12" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="4.22" y1="19.78" x2="5.64" y2="18.36" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                  <line x1="18.36" y1="5.64" x2="19.78" y2="4.22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
                 </svg>
               )}
             </button>
@@ -384,31 +519,16 @@ useEffect(() => {
             <div className="user-menu">
               <button type="button" className="user-avatar" onClick={handleProfileClick} title="Profile">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2"/>
+                  <path d="M20 21V19C20 17.9391 19.5786 16.9217 18.8284 16.1716C18.0783 15.4214 17.0609 15 16 15H8C6.93913 15 5.92172 15.4214 5.17157 16.1716C4.42143 16.9217 4 17.9391 4 19V21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <circle cx="12" cy="7" r="4" stroke="currentColor" strokeWidth="2" />
                 </svg>
               </button>
-              <button
-                className="notification-btn"
-                title="Notifications"
-                aria-label="Notifications"
-                onClick={() => navigate('/notifications')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M18 8A6 6 0 0 0 6 8C6 14 4 16 4 16H20C20 16 18 14 18 8Z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M13.73 21A2 2 0 0 1 10.27 21" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                {unreadNotificationCount > 0 && (
-                  <span className="notification-badge" aria-label={`${unreadNotificationCount} unread notifications`}>
-                    {unreadNotificationCount > 9 ? '9+' : unreadNotificationCount}
-                  </span>
-                )}
-              </button>
+              {/* Notifications removed for doctors */}
               <button onClick={handleLogout} className="logout-btn" title="Logout">
                 <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M16 17L21 12L16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M9 21H5C4.46957 21 3.96086 20.7893 3.58579 20.4142C3.21071 20.0391 3 19.5304 3 19V5C3 4.46957 3.21071 3.96086 3.58579 3.58579C3.96086 3.21071 4.46957 3 5 3H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M16 17L21 12L16 7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M21 12H9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </button>
             </div>
@@ -442,7 +562,7 @@ useEffect(() => {
 
           <div className="dashboard-content">
             <div className="dashboard-welcome">
-              <h1 className="welcome-title">Welcome back, {userName} 👋</h1>
+              <h1 className="welcome-title">Welcome back, {userName}!</h1>
               <p className="welcome-subtitle">Your patients, appointments, and clinical insights</p>
             </div>
 
@@ -483,11 +603,9 @@ useEffect(() => {
                                 {getInitials(appointment.patientName)}
                               </div>
                               <div>
-  <h3>{appointment.patientName || 'Patient'}</h3>
-  <p className="appointment-date">
-    {appointment.appointmentDate}
-  </p>
-</div>
+                                <h3>{appointment.patientName || 'Patient'}</h3>
+                                <p className="appointment-date">{appointment.appointmentDate}</p>
+                              </div>
                             </div>
                             <span className="time-pill">{formatTimeLabel(appointment.time)}</span>
                           </div>
@@ -498,64 +616,18 @@ useEffect(() => {
                         <span className="status-badge confirmed">Confirmed</span>
                         <div className="action-buttons">
                           <button
-  type="button"
-  className="ghost-btn"
-  onClick={() => navigate(`/doctor-appointments/reschedule?id=${appointment.id}`)}
->
-  Reschedule
-</button>
+                            type="button"
+                            className="ghost-btn"
+                            onClick={() => navigate(`/doctor-appointments/reschedule?id=${appointment.id}`)}
+                          >
+                            Reschedule
+                          </button>
                           <button className="danger-btn">Cancel</button>
                         </div>
                       </div>
                     </article>
                   ))
                 )}
-              </div>
-            </section>
-
-            <section id="patients" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Patients requiring focus</h2>
-                  <p className="section-subtitle">Priority follow-ups and care plans</p>
-                </div>
-                <button className="link-pill">View All Patients</button>
-              </div>
-
-              <div className="patients-list">
-                <div className="patient-card">
-                  <div>
-                    <h3>Sameer Joshi</h3>
-                    <p>Hypertension • Follow-up due today</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="status-badge pending">Due Today</span>
-                    <button className="ghost-btn">Message</button>
-                    <button className="primary-btn">Open Profile</button>
-                  </div>
-                </div>
-                <div className="patient-card">
-                  <div>
-                    <h3>Meera Patel</h3>
-                    <p>Diabetes • Lab results review</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="status-badge confirmed">Reviewed</span>
-                    <button className="ghost-btn">Message</button>
-                    <button className="primary-btn">Open Profile</button>
-                  </div>
-                </div>
-                <div className="patient-card">
-                  <div>
-                    <h3>Nisha Verma</h3>
-                    <p>General • Post-op check-in</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="status-badge pending">Pending</span>
-                    <button className="ghost-btn">Message</button>
-                    <button className="primary-btn">Open Profile</button>
-                  </div>
-                </div>
               </div>
             </section>
 
@@ -590,10 +662,27 @@ useEffect(() => {
                       <div
                         key={cell.key}
                         className={`calendar-cell day ${cell.isBusy ? 'busy' : ''} ${cell.isToday ? 'today' : ''}`}
+                        title={
+                          cell.approvedAppointments.length
+                            ? cell.approvedAppointments
+                                .map((appointment) => `${formatTimeLabel(appointment.time)} - ${appointment.patientName}`)
+                                .join('\n')
+                            : 'No approved appointments'
+                        }
                       >
                         <span className="day-number">{cell.day}</span>
                         <span className="approved-count">{cell.approvedCount}</span>
                         <span className="approved-label">Approved</span>
+                        {cell.approvedAppointments.length ? (
+                          <span className="calendar-hover-card" aria-hidden="true">
+                            <strong>Approved bookings</strong>
+                            {cell.approvedAppointments.map((appointment) => (
+                              <span key={appointment.id || `${appointment.patientName}-${appointment.time}`}>
+                                {formatTimeLabel(appointment.time)} - {appointment.patientName}
+                              </span>
+                            ))}
+                          </span>
+                        ) : null}
                       </div>
                     )
                   )}
@@ -604,8 +693,8 @@ useEffect(() => {
             <section id="analytics" className="dashboard-section">
               <div className="section-header">
                 <div>
-                  <h2 className="section-title">Ananlysis</h2>
-                  <p className="section-subtitle">Clinic performance indicators</p>
+                  <h2 className="section-title">Live Analysis</h2>
+                  <p className="section-subtitle">Real-time appointment and rating trends from current backend data</p>
                 </div>
                 <button className="link-pill" onClick={() => setShowInsightsPreview(true)}>
                   View Full Insights
@@ -615,113 +704,73 @@ useEffect(() => {
               <div className="analytics-grid">
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Daily Appointments</span>
-                    <span className="trend-indicator good">Today</span>
+                    <span>Today&apos;s Approved Bookings</span>
+                    <span className="trend-indicator good">Live</span>
                   </div>
                   <h3>{analyticsMetrics.dailyAppointments}</h3>
-                  <p className="analytics-meta">Appointments scheduled today</p>
+                  <p className="analytics-meta">Compared across the last 7 days of approved appointments</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,24 20,22 40,20 60,18 80,20 100,16 120,14" />
+                    <polyline points={buildSparklinePoints(analyticsMetrics.dailySeries.map((item) => item.count))} />
                   </svg>
-                </div>
-                <div className="analytics-card">
-                  <div className="analytics-header">
-                    <span>Last Week Appointments</span>
-                    <span className="trend-indicator good">7 Days</span>
+                  <div className="analytics-footnote">
+                    {analyticsMetrics.dailySeries.map((item) => (
+                      <span key={item.dateKey}>{item.label}: {item.count}</span>
+                    ))}
                   </div>
-                  <h3>{analyticsMetrics.lastWeekAppointments}</h3>
-                  <p className="analytics-meta">Total in last 7 days</p>
-                  <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,30 20,28 40,24 60,20 80,18 100,16 120,14" />
-                  </svg>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>One Month Appointments</span>
+                    <span>Next 7 Days</span>
+                    <span className="trend-indicator good">Forecast</span>
+                  </div>
+                  <h3>{analyticsMetrics.upcomingWeekAppointments}</h3>
+                  <p className="analytics-meta">Approved upcoming appointments scheduled over the next week</p>
+                  <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
+                    <polyline points={buildSparklinePoints(analyticsMetrics.upcomingWeekSeries.map((item) => item.count))} />
+                  </svg>
+                  <div className="analytics-footnote">
+                    {analyticsMetrics.upcomingWeekSeries.map((item) => (
+                      <span key={item.dateKey}>{item.label}: {item.count}</span>
+                    ))}
+                  </div>
+                </div>
+                <div className="analytics-card">
+                  <div className="analytics-header">
+                    <span>Completed This Month</span>
                     <span className="trend-indicator good">30 Days</span>
                   </div>
                   <h3>{analyticsMetrics.oneMonthAppointments}</h3>
-                  <p className="analytics-meta">Total in last 30 days</p>
+                  <p className="analytics-meta">Completed appointments grouped by the last four weekly windows</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,32 20,30 40,27 60,24 80,20 100,16 120,12" />
+                    <polyline points={buildSparklinePoints(analyticsMetrics.monthlySeries.map((item) => item.count))} />
                   </svg>
+                  <div className="analytics-footnote">
+                    {analyticsMetrics.monthlySeries.map((item) => (
+                      <span key={item.label}>{item.label}: {item.count}</span>
+                    ))}
+                  </div>
                 </div>
                 <div className="analytics-card">
                   <div className="analytics-header">
-                    <span>Avg Ratings</span>
+                    <span>Patient Rating</span>
                     <span className="trend-indicator good">Reviews</span>
                   </div>
                   <h3>{analyticsMetrics.avgRating} / 5</h3>
-                  <p className="analytics-meta">From {analyticsMetrics.totalRatings} submitted ratings</p>
+                  <p className="analytics-meta">Live average from {analyticsMetrics.totalRatings} submitted ratings</p>
                   <svg className="sparkline" viewBox="0 0 120 40" aria-hidden="true">
-                    <polyline points="0,28 20,24 40,20 60,18 80,16 100,14 120,12" />
+                    <polyline points={buildSparklinePoints(analyticsMetrics.latestRatings)} />
                   </svg>
+                  <div className="analytics-footnote">
+                    {(analyticsMetrics.latestRatings.length ? analyticsMetrics.latestRatings : [0]).map((rating, index) => (
+                      <span key={`${rating}-${index}`}>Review {index + 1}: {rating}</span>
+                    ))}
+                  </div>
                 </div>
               </div>
+              <p className="summary-meta">Last synced: {lastAnalysisRefresh ? lastAnalysisRefresh.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' }) : 'Waiting for data'}</p>
             </section>
 
-            <section id="reports" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Reports</h2>
-                  <p className="section-subtitle">Pending reviews and uploads</p>
-                </div>
-                <button className="link-pill" onClick={() => handleCardAction('/doctor-medical-records')}>Create Report</button>
-              </div>
-
-              <div className="reports-list">
-                <div className="report-item">
-                  <div>
-                    <h3>Lab Panel Review</h3>
-                    <p>Sameer Joshi • Uploaded Feb 10</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Urgent</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Approve</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Radiology Summary</h3>
-                    <p>Meera Patel • Uploaded Feb 7</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status">Ready</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Approve</button>
-                  </div>
-                </div>
-                <div className="report-item">
-                  <div>
-                    <h3>Prescription Update</h3>
-                    <p>Nisha Verma • Uploaded Feb 2</p>
-                  </div>
-                  <div className="report-actions">
-                    <span className="report-status muted">Draft</span>
-                    <button className="ghost-btn">View PDF</button>
-                    <button className="primary-btn">Finalize</button>
-                  </div>
-                </div>
-              </div>
-            </section>
-            <section id="settings" className="dashboard-section">
-              <div className="section-header">
-                <div>
-                  <h2 className="section-title">Settings</h2>
-                  <p className="section-subtitle">Notifications, availability, and privacy</p>
-                </div>
-                <button className="link-pill">Open Settings</button>
-              </div>
-
-              <div className="settings-card">
-                <div>
-                  <h3>Availability</h3>
-                  <p>Update clinic hours and teleconsulting slots.</p>
-                </div>
-                <button className="primary-btn">Manage</button>
-              </div>
-            </section>
+            {/* Settings section removed */}
           </div>
         </div>
       </main>
@@ -746,7 +795,7 @@ useEffect(() => {
             <div className="analytics-grid insights-grid">
               <div className="analytics-card">
                 <div className="analytics-header">
-                  <span>Daily Appointments</span>
+                  <span>Today&apos;s Approved Bookings</span>
                 </div>
                 <h3>{analyticsMetrics.dailyAppointments}</h3>
                 <p className="analytics-meta">Current day total</p>
@@ -754,18 +803,18 @@ useEffect(() => {
 
               <div className="analytics-card">
                 <div className="analytics-header">
-                  <span>Last Week Appointments</span>
+                  <span>Next 7 Days</span>
                 </div>
-                <h3>{analyticsMetrics.lastWeekAppointments}</h3>
-                <p className="analytics-meta">Rolling 7-day total</p>
+                <h3>{analyticsMetrics.upcomingWeekAppointments}</h3>
+                <p className="analytics-meta">Upcoming approved total</p>
               </div>
 
               <div className="analytics-card">
                 <div className="analytics-header">
-                  <span>One Month Appointments</span>
+                  <span>Completed This Month</span>
                 </div>
                 <h3>{analyticsMetrics.oneMonthAppointments}</h3>
-                <p className="analytics-meta">Rolling 30-day total</p>
+                <p className="analytics-meta">Rolling 30-day completed total</p>
               </div>
 
               <div className="analytics-card">
@@ -779,7 +828,6 @@ useEffect(() => {
           </section>
         </div>
       )}
-
     </div>
   );
 };

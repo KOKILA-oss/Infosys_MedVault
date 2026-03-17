@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import axios from 'axios';
 import { useLocation, useNavigate } from 'react-router-dom';
 import './PatientProfile.css';
-
-const REGISTRY_KEY = 'doctorPatientRegistry';
 
 const createPatientKey = (patient) => {
   const email = (patient.email || '').trim().toLowerCase();
@@ -17,20 +16,26 @@ const createPatientKey = (patient) => {
   return `${name}-${phone || 'na'}`;
 };
 
-const parseRegistry = () => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(REGISTRY_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
 const formatDateTime = (dateTime) => {
   if (!dateTime) return 'N/A';
   const date = new Date(dateTime);
   if (Number.isNaN(date.getTime())) return 'N/A';
   return date.toLocaleString();
+};
+
+const openBlobInNewTab = (blob, fileName) => {
+  const blobUrl = window.URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = blobUrl;
+  link.target = '_blank';
+  link.rel = 'noopener noreferrer';
+  if (fileName) {
+    link.download = fileName;
+  }
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  window.setTimeout(() => window.URL.revokeObjectURL(blobUrl), 1000);
 };
 
 const PatientProfile = () => {
@@ -52,20 +57,38 @@ const PatientProfile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [activeTab, setActiveTab] = useState('profile');
   const [reportNote, setReportNote] = useState('');
+  const [selectedDoctor, setSelectedDoctor] = useState('');
+  const [doctorOptions, setDoctorOptions] = useState([]);
+  const [showDoctorPicker, setShowDoctorPicker] = useState(false);
+  const [loadingDoctors, setLoadingDoctors] = useState(false);
+  const [doctorLoadError, setDoctorLoadError] = useState('');
+  const [reportUploadStatus, setReportUploadStatus] = useState('');
+  const [patientIdentity, setPatientIdentity] = useState({ name: '', email: '', phoneNumber: '' });
+  const [reports, setReports] = useState([]);
+  const [appointments, setAppointments] = useState([]);
+  const [selectedAppointmentId, setSelectedAppointmentId] = useState('');
+  const reportsOnlyMode = activeTab === 'reports';
 
-  const patientKey = useMemo(() => createPatientKey(profile), [profile]);
+  const effectivePatientIdentity = useMemo(() => {
+    const storedUserName = (localStorage.getItem('userName') || '').trim();
+    const storedUserEmail = (localStorage.getItem('userEmail') || '').trim();
 
-  const reports = useMemo(() => {
-    const registry = parseRegistry();
-    const list = registry[patientKey]?.reports;
-    return Array.isArray(list) ? list : [];
-  }, [patientKey, profile]);
+    return {
+      name: patientIdentity.name || storedUserName || profile.username || profile.name || '',
+      email: patientIdentity.email || storedUserEmail || profile.email || '',
+      phoneNumber: patientIdentity.phoneNumber || profile.phoneNumber || ''
+    };
+  }, [patientIdentity, profile]);
+
+  const patientKey = useMemo(() => createPatientKey(effectivePatientIdentity), [effectivePatientIdentity]);
 
   const loadProfile = () => {
     const stored = localStorage.getItem('medvaultProfile');
     const parsed = stored ? JSON.parse(stored) : {};
     setProfile((prev) => ({
       ...prev,
+      email: prev.email || localStorage.getItem('userEmail') || '',
+      username: prev.username || localStorage.getItem('userName') || '',
       ...parsed
     }));
   };
@@ -77,6 +100,34 @@ const PatientProfile = () => {
   }, []);
 
   useEffect(() => {
+    const loadPatientIdentity = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await axios.get('/api/patient/profile', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setPatientIdentity({
+          name: response.data?.user?.name || response.data?.name || '',
+          email: response.data?.user?.email || response.data?.email || '',
+          phoneNumber: response.data?.phoneNumber || ''
+        });
+      } catch (error) {
+        console.error('Failed to load patient identity for reports', error);
+        setPatientIdentity({
+          name: (localStorage.getItem('userName') || '').trim(),
+          email: (localStorage.getItem('userEmail') || '').trim(),
+          phoneNumber: ''
+        });
+      }
+    };
+
+    loadPatientIdentity();
+  }, []);
+
+  useEffect(() => {
     const queryTab = new URLSearchParams(location.search).get('tab');
     if (queryTab === 'reports') {
       setActiveTab('reports');
@@ -84,6 +135,85 @@ const PatientProfile = () => {
     }
     setActiveTab('profile');
   }, [location.search]);
+
+  const loadReports = async () => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await axios.get('/api/patient/records', {
+        headers: { Authorization: `Bearer ${token}` },
+        params: { category: 'TEST_REPORT' }
+      });
+
+      setReports(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to load test reports', error);
+      setReports([]);
+    }
+  };
+
+  useEffect(() => {
+    loadReports();
+  }, []);
+
+  useEffect(() => {
+    const loadAppointments = async () => {
+      try {
+        const token = localStorage.getItem('token');
+        if (!token) return;
+
+        const response = await axios.get('/api/patient/appointments', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setAppointments(Array.isArray(response.data) ? response.data : []);
+      } catch (error) {
+        console.error('Failed to load patient appointments for report upload', error);
+        setAppointments([]);
+      }
+    };
+
+    loadAppointments();
+  }, []);
+
+  const reportAppointmentOptions = useMemo(() => {
+    return appointments
+      .filter((item) => item?.doctorId && String(item.doctorId) === String(selectedDoctor))
+      .map((item) => ({
+        id: item.id,
+        label: `${item.appointmentDate || 'Date'} ${item.appointmentTime || ''} - ${item.reason || 'Appointment'}`
+      }));
+  }, [appointments, selectedDoctor]);
+
+  const loadDoctors = async () => {
+    if (doctorOptions.length > 0 || loadingDoctors) return;
+
+    try {
+      setLoadingDoctors(true);
+      setDoctorLoadError('');
+      const token = localStorage.getItem('token');
+      const response = await axios.get('/api/doctors', token ? {
+        headers: { Authorization: `Bearer ${token}` }
+      } : undefined);
+      setDoctorOptions(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      console.error('Failed to load doctors for report sharing', error);
+      setDoctorOptions([]);
+      setDoctorLoadError('Unable to load doctors right now.');
+    } finally {
+      setLoadingDoctors(false);
+    }
+  };
+
+  const handleDoctorPickerToggle = async () => {
+    const nextOpen = !showDoctorPicker;
+    setShowDoctorPicker(nextOpen);
+    setReportUploadStatus('');
+    if (nextOpen) {
+      await loadDoctors();
+    }
+  };
 
   const handleChange = (event) => {
     const { name, value } = event.target;
@@ -105,49 +235,99 @@ const PatientProfile = () => {
 
   const displayValue = (value) => value || 'Not set';
 
-  const handlePdfUpload = (event) => {
+  const handlePdfUpload = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
 
     if (!file) return;
+    if (!effectivePatientIdentity.email) {
+      setReportUploadStatus('Unable to identify the logged-in patient. Please log in again and retry.');
+      return;
+    }
     if (file.type !== 'application/pdf') {
-      alert('Please upload only PDF reports.');
+      setReportUploadStatus('Please upload only PDF reports.');
+      return;
+    }
+    if (!selectedDoctor) {
+      setShowDoctorPicker(true);
+      setReportUploadStatus('Select a doctor first, then upload the PDF report.');
+      await loadDoctors();
       return;
     }
 
-    const registry = parseRegistry();
-    const currentEntry = registry[patientKey] || {};
+    const doctor = doctorOptions.find((item) => String(item.id) === selectedDoctor);
+    const token = localStorage.getItem('token');
 
-    const reader = new FileReader();
-    reader.onload = () => {
-      const report = {
-        id: Date.now(),
-        fileName: file.name,
-        uploadedAt: new Date().toISOString(),
-        note: reportNote.trim(),
-        dataUrl: typeof reader.result === 'string' ? reader.result : '',
-        uploadedBy: 'patient'
-      };
+    if (!token) {
+      setReportUploadStatus('Please log in again and retry.');
+      return;
+    }
 
-      const nextRegistry = {
-        ...registry,
-        [patientKey]: {
-          ...currentEntry,
-          profile: {
-            ...currentEntry.profile,
-            name: currentEntry.profile?.name || profile.username,
-            email: currentEntry.profile?.email || profile.email,
-            phoneNumber: currentEntry.profile?.phoneNumber || profile.phoneNumber
-          },
-          reports: [report, ...(Array.isArray(currentEntry.reports) ? currentEntry.reports : [])]
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('title', file.name);
+    formData.append('description', reportNote.trim());
+    formData.append('category', 'TEST_REPORT');
+    formData.append('sharedDoctorId', selectedDoctor);
+    if (selectedAppointmentId) {
+      formData.append('appointmentId', selectedAppointmentId);
+    }
+
+    try {
+      await axios.post('/api/patient/records/upload', formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'multipart/form-data'
         }
-      };
+      });
 
-      localStorage.setItem(REGISTRY_KEY, JSON.stringify(nextRegistry));
+      if (doctor?.id) {
+        await axios.post('/api/patient/records/consents', {
+          doctorId: doctor.id,
+          category: 'TEST_REPORT',
+          expiresAt: null
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+      }
+
       setReportNote('');
-    };
+      setSelectedDoctor('');
+      setSelectedAppointmentId('');
+      setShowDoctorPicker(false);
+      setReportUploadStatus('Test report uploaded successfully.');
+      await loadReports();
 
-    reader.readAsDataURL(file);
+      if (doctor?.email || doctor?.name) {
+        await axios.post('/api/notifications/report-shared', {
+          doctorEmail: doctor?.email || '',
+          doctorName: doctor?.name || '',
+          fileName: file.name
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        window.dispatchEvent(new Event('notifications:updated'));
+      }
+    } catch (error) {
+      console.error('Failed to upload test report', error);
+      setReportUploadStatus(error.response?.data?.message || 'Unable to upload the test report right now.');
+    }
+  };
+
+  const handleViewReport = async (reportId) => {
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      const response = await axios.get(`/api/patient/records/${reportId}/download`, {
+        headers: { Authorization: `Bearer ${token}` },
+        responseType: 'blob'
+      });
+
+      openBlobInNewTab(response.data);
+    } catch (error) {
+      console.error('Failed to open test report', error);
+    }
   };
 
   return (
@@ -155,14 +335,14 @@ const PatientProfile = () => {
       <div className="profile-shell">
         <div className="profile-topbar">
           <div>
-            <h1 className="profile-title">Patient Profile</h1>
-            <p className="profile-subtitle">Review your health details</p>
+            <h1 className="profile-title">Reports</h1>
+            <p className="profile-subtitle">Upload and manage your reports</p>
           </div>
           <div className="profile-actions">
             <button type="button" className="secondary-btn" onClick={() => navigate('/patient-dashboard')}>
               Back to Dashboard
             </button>
-            {activeTab === 'profile' ? (
+            {!reportsOnlyMode && activeTab === 'profile' ? (
               isEditing ? (
                 <>
                   <button type="button" className="secondary-btn" onClick={handleCancel}>
@@ -182,31 +362,33 @@ const PatientProfile = () => {
         </div>
 
         <div className="profile-card">
-          <div className="profile-tab-row">
-            <button
-              type="button"
-              className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
-              onClick={() => setActiveTab('profile')}
-            >
-              Profile
-            </button>
-            <button
-              type="button"
-              className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
-              onClick={() => setActiveTab('reports')}
-            >
-              Reports
-            </button>
-            <button
-              type="button"
-              className="tab-btn"
-              onClick={() => navigate('/patient-bookings?tab=all')}
-            >
-              Appointments
-            </button>
-          </div>
+          {reportsOnlyMode ? null : (
+            <div className="profile-tab-row">
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'profile' ? 'active' : ''}`}
+                onClick={() => setActiveTab('profile')}
+              >
+                Profile
+              </button>
+              <button
+                type="button"
+                className={`tab-btn ${activeTab === 'reports' ? 'active' : ''}`}
+                onClick={() => setActiveTab('reports')}
+              >
+                Reports
+              </button>
+              <button
+                type="button"
+                className="tab-btn"
+                onClick={() => navigate('/patient-bookings?tab=all')}
+              >
+                Appointments
+              </button>
+            </div>
+          )}
 
-          {activeTab === 'profile' ? (
+          {activeTab === 'profile' && !reportsOnlyMode ? (
             <>
               <div className="profile-section">
                 <h2 className="section-title">Basic Info</h2>
@@ -399,21 +581,69 @@ const PatientProfile = () => {
             </>
           ) : (
             <div className="profile-section">
-              <h2 className="section-title">Reports (PDF)</h2>
+              <h2 className="section-title">Test Reports</h2>
+              <p className="profile-subtitle">Upload your PDF test report and choose which doctor can see it.</p>
               <div className="report-upload-row">
-                <input
-                  className="profile-input"
-                  type="text"
-                  placeholder="Optional note for this report"
-                  value={reportNote}
-                  onChange={(event) => setReportNote(event.target.value)}
-                />
-                <label className="secondary-btn upload-btn">
-                  Upload PDF
+                <button type="button" className="picker-btn" onClick={handleDoctorPickerToggle}>
+                  {selectedDoctor
+                    ? `Submitted to: ${doctorOptions.find((doctor) => String(doctor.id) === selectedDoctor)?.name || 'Selected doctor'}`
+                    : 'Visible to / submitted to'}
+                </button>
+                <label className={`secondary-btn upload-btn ${selectedDoctor ? '' : 'upload-btn-disabled'}`}>
+                  {selectedDoctor ? 'Upload PDF' : 'Select doctor first'}
                   {' '}
-                  <input type="file" accept="application/pdf" onChange={handlePdfUpload} />
+                  <input type="file" accept="application/pdf" onChange={handlePdfUpload} disabled={!selectedDoctor} />
                 </label>
               </div>
+              {showDoctorPicker ? (
+                <div className="doctor-picker-panel">
+                  <select
+                    className="profile-input"
+                    value={selectedDoctor}
+                    onChange={(event) => {
+                      setSelectedDoctor(event.target.value);
+                      setSelectedAppointmentId('');
+                      setReportUploadStatus('');
+                    }}
+                  >
+                    <option value="">
+                      {loadingDoctors ? 'Loading doctors...' : 'Select doctor'}
+                    </option>
+                    {doctorOptions.map((doctor) => (
+                      <option key={doctor.id} value={doctor.id}>
+                        {doctor.name}{doctor.specialization ? ` - ${doctor.specialization}` : ''}{doctor.hospitalName ? ` (${doctor.hospitalName})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {doctorLoadError ? (
+                    <p className="profile-subtitle">{doctorLoadError}</p>
+                  ) : null}
+                  {!loadingDoctors && doctorOptions.length === 0 ? (
+                    <p className="profile-subtitle">No doctors found right now.</p>
+                  ) : null}
+                </div>
+              ) : null}
+              <select
+                className="profile-input"
+                value={selectedAppointmentId}
+                onChange={(event) => setSelectedAppointmentId(event.target.value)}
+                disabled={!selectedDoctor}
+              >
+                <option value="">Common report for this doctor (not tied to one appointment)</option>
+                {reportAppointmentOptions.map((appointment) => (
+                  <option key={appointment.id} value={appointment.id}>
+                    {appointment.label}
+                  </option>
+                ))}
+              </select>
+              {reportUploadStatus ? <p className="profile-subtitle">{reportUploadStatus}</p> : null}
+              <input
+                className="profile-input"
+                type="text"
+                placeholder="Optional note for this report"
+                value={reportNote}
+                onChange={(event) => setReportNote(event.target.value)}
+              />
 
               <div className="reports-list">
                 {reports.length === 0 ? (
@@ -422,18 +652,16 @@ const PatientProfile = () => {
                   reports.map((item) => (
                     <div className="report-item" key={item.id}>
                       <div>
-                        <h3>{item.fileName || 'Report'}</h3>
-                        <p>{item.note || 'No note'}</p>
-                        <small className="report-date">Uploaded: {formatDateTime(item.uploadedAt)}</small>
+                        <h3>{item.fileName || item.title || 'Report'}</h3>
+                        <p>{item.description || 'No note'}</p>
+                        {item.sharedDoctorName ? <p>Visible to: {item.sharedDoctorName}</p> : null}
+                        {item.appointmentId ? <p>Linked to appointment #{item.appointmentId}</p> : <p>Common test report</p>}
+                        <small className="report-date">Uploaded: {formatDateTime(item.createdAt)}</small>
                       </div>
                       <div className="report-actions">
-                        {item.dataUrl ? (
-                          <a className="secondary-btn" href={item.dataUrl} target="_blank" rel="noreferrer">
-                            View PDF
-                          </a>
-                        ) : (
-                          <span className="profile-subtitle">Preview unavailable</span>
-                        )}
+                        <button type="button" className="secondary-btn" onClick={() => handleViewReport(item.id)}>
+                          View PDF
+                        </button>
                       </div>
                     </div>
                   ))

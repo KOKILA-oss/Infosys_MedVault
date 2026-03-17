@@ -10,15 +10,19 @@ import org.springframework.web.bind.annotation.RestController;
 
 import com.example.demo.dto.AppointmentRequest;
 import com.example.demo.service.AppointmentService;
+import com.example.demo.service.DoctorPatientRegistryService;
 
     @RestController
 @RequestMapping("/api/patient/appointments")
 public class PatientAppointmentController {
 
     private final AppointmentService appointmentService;
+    private final DoctorPatientRegistryService doctorPatientRegistryService;
 
-    public PatientAppointmentController(AppointmentService appointmentService) {
+    public PatientAppointmentController(AppointmentService appointmentService,
+                                        DoctorPatientRegistryService doctorPatientRegistryService) {
         this.appointmentService = appointmentService;
+        this.doctorPatientRegistryService = doctorPatientRegistryService;
     }
 
     // Book appointment
@@ -42,6 +46,13 @@ public class PatientAppointmentController {
 
         return ResponseEntity.ok(
                 appointmentService.getPatientAppointments(patientEmail)
+        );
+    }
+
+    @GetMapping("/registry-entries")
+    public ResponseEntity<?> getPatientRegistryEntries(Authentication authentication) {
+        return ResponseEntity.ok(
+                doctorPatientRegistryService.getPatientRegistryEntries(authentication.getName())
         );
     }
 

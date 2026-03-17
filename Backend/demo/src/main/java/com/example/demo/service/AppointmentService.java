@@ -1,8 +1,11 @@
 package com.example.demo.service;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Service;
@@ -11,8 +14,10 @@ import org.slf4j.LoggerFactory;
 
 import com.example.demo.dto.AppointmentRequest;
 import com.example.demo.dto.AppointmentResponse;
+import com.example.demo.dto.AppointmentAvailabilityResponse;
 import com.example.demo.dto.AppointmentStatus;
 import com.example.demo.dto.DoctorPatientRegistryResponse;
+import com.example.demo.dto.PatientTipResponse;
 import com.example.demo.dto.RescheduleRequest;
 import com.example.demo.entity.Appointment;
 import com.example.demo.entity.PatientProfile;
@@ -28,13 +33,16 @@ public class AppointmentService {
         private final AppointmentRepository appointmentRepository;
         private final UserRepository userRepository;
         private final NotificationService notificationService;
+        private final DoctorScheduleService doctorScheduleService;
 
         public AppointmentService(AppointmentRepository appointmentRepository,
                                                           UserRepository userRepository,
-                                                          NotificationService notificationService) {
+                                                          NotificationService notificationService,
+                                                          DoctorScheduleService doctorScheduleService) {
                 this.appointmentRepository = appointmentRepository;
                 this.userRepository = userRepository;
                 this.notificationService = notificationService;
+                this.doctorScheduleService = doctorScheduleService;
         }
 
     private AppointmentResponse mapToResponse(Appointment appointment) {
@@ -58,16 +66,12 @@ public class AppointmentService {
         }
 
         // 3️⃣ Check if slot already booked
-        boolean exists = appointmentRepository
-                .existsByDoctorAndAppointmentDateAndAppointmentTime(
-                        doctor,
-                        request.getDate(),
-                        request.getTime()
-                );
-
-        if (exists) {
-            throw new RuntimeException("Slot already booked");
-        }
+        doctorScheduleService.validateRequestedAppointment(
+                doctor,
+                request.getDate(),
+                request.getTime(),
+                null
+        );
 
         // 4️⃣ Save appointment
         Appointment appointment = new Appointment();
@@ -153,26 +157,8 @@ public List<AppointmentResponse> getTodayAppointmentsForDoctor(String email) {
             .toList();
 }
 
-public List<String> getAvailableSlots(Long doctorId, LocalDate date) {
-
-    User doctor = userRepository.findById(doctorId)
-            .orElseThrow(() -> new RuntimeException("Doctor not found"));
-
-    // Clinic fixed timings (you can later move this to DB)
-    List<String> allSlots = List.of(
-            "09:00", "10:30", "12:00", "15:00", "16:30"
-    );
-
-    List<Appointment> booked =
-            appointmentRepository.findByDoctorAndAppointmentDate(doctor, date);
-
-    List<String> bookedTimes = booked.stream()
-            .map(a -> a.getAppointmentTime().toString())
-            .toList();
-
-    return allSlots.stream()
-            .filter(slot -> !bookedTimes.contains(slot))
-            .toList();
+public AppointmentAvailabilityResponse getAvailableSlots(Long doctorId, LocalDate date) {
+    return doctorScheduleService.getAvailability(doctorId, date);
 }
 
 public void rescheduleAppointment(RescheduleRequest request,
@@ -192,17 +178,12 @@ public void rescheduleAppointment(RescheduleRequest request,
     }
 
     // 🔥 Prevent double booking (excluding current appointment)
-    boolean exists = appointmentRepository
-            .existsByDoctorAndAppointmentDateAndAppointmentTimeAndIdNot(
-                    appointment.getDoctor(),
-                    request.getDate(),
-                    request.getTime(),
-                    appointment.getId()
-            );
-
-    if (exists) {
-        throw new RuntimeException("Selected slot already booked");
-    }
+    doctorScheduleService.validateRequestedAppointment(
+            appointment.getDoctor(),
+            request.getDate(),
+            request.getTime(),
+            appointment.getId()
+    );
 
     // ✅ Update date & time
     appointment.setAppointmentDate(request.getDate());
@@ -322,6 +303,55 @@ public List<AppointmentResponse> getPatientAppointments(String patientEmail) {
             .toList();
 }
 
+public List<PatientTipResponse> getPersonalizedTips(String patientEmail) {
+
+    User patient = userRepository.findByEmail(patientEmail)
+            .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+    List<String> reasons = appointmentRepository.findByPatient(patient)
+            .stream()
+            .map(Appointment::getReason)
+            .filter(reason -> reason != null && !reason.isBlank())
+            .map(String::trim)
+            .toList();
+
+    if (reasons.isEmpty()) {
+        return List.of(
+                new PatientTipResponse(
+                        "Describe symptoms clearly",
+                        "Add a precise booking reason so MedVault can suggest better preparation tips before your visit.",
+                        "No booking reason yet"
+                ),
+                new PatientTipResponse(
+                        "Keep records ready",
+                        "Carry prescriptions, recent reports, and allergy details for a faster consultation.",
+                        "General care"
+                )
+        );
+    }
+
+    Set<String> seenTitles = new LinkedHashSet<>();
+    List<PatientTipResponse> tips = new ArrayList<>();
+
+    for (String reason : reasons) {
+        for (PatientTipResponse tip : buildTipsForReason(reason)) {
+            if (seenTitles.add(tip.getTitle())) {
+                tips.add(tip);
+            }
+        }
+    }
+
+    if (tips.isEmpty()) {
+        return List.of(new PatientTipResponse(
+                "Prepare for the consultation",
+                "Note symptom duration, triggers, and current medicines before the appointment.",
+                reasons.get(0)
+        ));
+    }
+
+    return tips.stream().limit(6).toList();
+}
+
 public List<DoctorPatientRegistryResponse> getDoctorPatientRegistry(String doctorEmail) {
 
     User doctor = userRepository.findByEmail(doctorEmail)
@@ -409,6 +439,98 @@ private DoctorPatientRegistryResponse mapToDoctorPatientRegistryResponse(List<Ap
     }
 
     return response;
+}
+
+private List<PatientTipResponse> buildTipsForReason(String reason) {
+    String normalized = reason.toLowerCase();
+    List<PatientTipResponse> tips = new ArrayList<>();
+
+    if (containsAny(normalized, "fever", "cold", "cough", "flu", "infection", "throat")) {
+        tips.add(new PatientTipResponse(
+                "Hydrate and rest",
+                "Drink enough fluids and avoid heavy exertion until the consultation if your booking reason mentions fever or infection-like symptoms.",
+                reason
+        ));
+        tips.add(new PatientTipResponse(
+                "Track temperature",
+                "Keep a note of fever timing and any medicines already taken so the doctor gets a clearer picture.",
+                reason
+        ));
+    }
+
+    if (containsAny(normalized, "sugar", "diabetes", "glucose")) {
+        tips.add(new PatientTipResponse(
+                "Log sugar readings",
+                "Bring recent glucose values and meal timing details when the visit is related to diabetes or sugar control.",
+                reason
+        ));
+        tips.add(new PatientTipResponse(
+                "Do not skip prescribed medicine",
+                "Continue prescribed diabetes medication unless your doctor has already told you to pause it.",
+                reason
+        ));
+    }
+
+    if (containsAny(normalized, "heart", "bp", "blood pressure", "chest", "palpitation")) {
+        tips.add(new PatientTipResponse(
+                "Limit salt and stimulants",
+                "Reduce salty foods and avoid excess caffeine before a heart or blood-pressure review.",
+                reason
+        ));
+        tips.add(new PatientTipResponse(
+                "Carry BP history",
+                "Bring recent blood pressure or pulse readings if you have them.",
+                reason
+        ));
+    }
+
+    if (containsAny(normalized, "headache", "migraine", "dizziness", "vertigo")) {
+        tips.add(new PatientTipResponse(
+                "Note triggers",
+                "Write down sleep, screen time, dehydration, or food triggers before the appointment.",
+                reason
+        ));
+        tips.add(new PatientTipResponse(
+                "Stay hydrated",
+                "Drink water regularly unless you have been told to restrict fluids.",
+                reason
+        ));
+    }
+
+    if (containsAny(normalized, "stomach", "gastric", "digestion", "acidity", "abdomen")) {
+        tips.add(new PatientTipResponse(
+                "Avoid heavy meals",
+                "Prefer light meals and note any foods that worsen the symptoms before a stomach-related visit.",
+                reason
+        ));
+    }
+
+    if (containsAny(normalized, "skin", "rash", "allergy", "itching")) {
+        tips.add(new PatientTipResponse(
+                "Avoid new products",
+                "Pause recently introduced cosmetics, creams, or foods if your symptoms suggest a rash or allergy trigger.",
+                reason
+        ));
+    }
+
+    if (tips.isEmpty()) {
+        tips.add(new PatientTipResponse(
+                "Prepare symptom notes",
+                "List the main issue, when it started, and what improves or worsens it before the consultation.",
+                reason
+        ));
+    }
+
+    return tips;
+}
+
+private boolean containsAny(String value, String... keywords) {
+    for (String keyword : keywords) {
+        if (value.contains(keyword)) {
+            return true;
+        }
+    }
+    return false;
 }
 
 }

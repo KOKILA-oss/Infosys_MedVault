@@ -1,6 +1,8 @@
 package com.example.demo.dto;
 
 import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.List;
 
 public class DoctorPatientRegistryResponse {
 
@@ -19,6 +21,8 @@ public class DoctorPatientRegistryResponse {
     private long appointmentCount;
     private LocalDate latestAppointmentDate;
     private String latestAppointmentStatus;
+    private List<AppointmentResponse> appointments = new ArrayList<>();
+    private List<DoctorPatientVisitEntryResponse> visitEntries = new ArrayList<>();
 
     public Long getPatientId() {
         return patientId;
@@ -138,5 +142,21 @@ public class DoctorPatientRegistryResponse {
 
     public void setLatestAppointmentStatus(String latestAppointmentStatus) {
         this.latestAppointmentStatus = latestAppointmentStatus;
+    }
+
+    public List<AppointmentResponse> getAppointments() {
+        return appointments;
+    }
+
+    public void setAppointments(List<AppointmentResponse> appointments) {
+        this.appointments = appointments;
+    }
+
+    public List<DoctorPatientVisitEntryResponse> getVisitEntries() {
+        return visitEntries;
+    }
+
+    public void setVisitEntries(List<DoctorPatientVisitEntryResponse> visitEntries) {
+        this.visitEntries = visitEntries;
     }
 }

@@ -18,5 +18,16 @@ public interface MedicalRecordRepository extends JpaRepository<MedicalRecord, Lo
             MedicalRecordCategory category
     );
 
+    List<MedicalRecord> findByOwnerAndSharedDoctorAndDeletedFalseOrderByCreatedAtDesc(
+            User owner,
+            User sharedDoctor
+    );
+
+    List<MedicalRecord> findByOwnerAndSharedDoctorAndCategoryAndDeletedFalseOrderByCreatedAtDesc(
+            User owner,
+            User sharedDoctor,
+            MedicalRecordCategory category
+    );
+
     Optional<MedicalRecord> findByIdAndDeletedFalse(Long id);
 }

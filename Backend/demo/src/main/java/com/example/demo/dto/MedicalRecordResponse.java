@@ -15,6 +15,9 @@ public class MedicalRecordResponse {
     private String contentType;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long sharedDoctorId;
+    private String sharedDoctorName;
+    private Long appointmentId;
 
     public MedicalRecordResponse() {
     }
@@ -28,6 +31,9 @@ public class MedicalRecordResponse {
         this.contentType = record.getContentType();
         this.createdAt = record.getCreatedAt();
         this.updatedAt = record.getUpdatedAt();
+        this.sharedDoctorId = record.getSharedDoctor() == null ? null : record.getSharedDoctor().getId();
+        this.sharedDoctorName = record.getSharedDoctor() == null ? null : record.getSharedDoctor().getName();
+        this.appointmentId = record.getAppointment() == null ? null : record.getAppointment().getId();
     }
 
     public Long getId() {
@@ -92,5 +98,29 @@ public class MedicalRecordResponse {
 
     public void setUpdatedAt(LocalDateTime updatedAt) {
         this.updatedAt = updatedAt;
+    }
+
+    public Long getSharedDoctorId() {
+        return sharedDoctorId;
+    }
+
+    public void setSharedDoctorId(Long sharedDoctorId) {
+        this.sharedDoctorId = sharedDoctorId;
+    }
+
+    public String getSharedDoctorName() {
+        return sharedDoctorName;
+    }
+
+    public void setSharedDoctorName(String sharedDoctorName) {
+        this.sharedDoctorName = sharedDoctorName;
+    }
+
+    public Long getAppointmentId() {
+        return appointmentId;
+    }
+
+    public void setAppointmentId(Long appointmentId) {
+        this.appointmentId = appointmentId;
     }
 }

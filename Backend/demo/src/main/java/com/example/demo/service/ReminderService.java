@@ -2,8 +2,13 @@ package com.example.demo.service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.time.format.DateTimeFormatterBuilder;
 import java.util.List;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,13 +26,16 @@ public class ReminderService {
     private final ReminderRepository reminderRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final String googleApiKey;
 
     public ReminderService(ReminderRepository reminderRepository,
                            UserRepository userRepository,
-                           NotificationService notificationService) {
+                           NotificationService notificationService,
+                           @Value("${google.api.key:}") String googleApiKey) {
         this.reminderRepository = reminderRepository;
         this.userRepository = userRepository;
         this.notificationService = notificationService;
+        this.googleApiKey = googleApiKey;
     }
 
     @Transactional
@@ -73,12 +81,14 @@ public class ReminderService {
         for (Reminder reminder : due) {
             User patient = reminder.getPatient();
             String message = "Reminder: " + reminder.getMessage() + " (Due: " + reminder.getDueDate() + ")";
+            String calendarLink = buildGoogleCalendarLink(reminder);
             notificationService.createNotification(
                     patient,
                     null,
                     "HEALTH_REMINDER",
                     message,
-                    null
+                    null,
+                    calendarLink
             );
             reminder.setNotified(true);
             reminder.setNotifiedAt(LocalDateTime.now());
@@ -96,5 +106,38 @@ public class ReminderService {
             case PRESCRIPTION_REFILL -> "Your prescription refill is due";
             case HEALTH_CHECKUP -> "Your routine health checkup is due";
         };
+    }
+
+    private String buildGoogleCalendarLink(Reminder reminder) {
+        LocalDateTime start = reminder.getDueDate().atTime(9, 0);
+        LocalDateTime end = start.plusMinutes(30);
+
+        DateTimeFormatter utcFormat = new DateTimeFormatterBuilder()
+                .appendPattern("yyyyMMdd'T'HHmmss'Z'")
+                .toFormatter()
+                .withZone(ZoneOffset.UTC);
+
+        String startUtc = utcFormat.format(start.atZone(ZoneId.systemDefault()).toInstant());
+        String endUtc = utcFormat.format(end.atZone(ZoneId.systemDefault()).toInstant());
+
+        String title = urlEncode("MedVault Reminder: " + reminder.getMessage());
+        String details = urlEncode("Reminder created in MedVault. Due on " + reminder.getDueDate());
+
+        StringBuilder url = new StringBuilder("https://calendar.google.com/calendar/render?action=TEMPLATE");
+        url.append("&text=").append(title);
+        url.append("&details=").append(details);
+        url.append("&dates=").append(startUtc).append("/").append(endUtc);
+        if (googleApiKey != null && !googleApiKey.isBlank()) {
+            url.append("&key=").append(urlEncode(googleApiKey));
+        }
+        return url.toString();
+    }
+
+    private String urlEncode(String value) {
+        try {
+            return java.net.URLEncoder.encode(value, java.nio.charset.StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            return "";
+        }
     }
 }

@@ -8,6 +8,7 @@ import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -25,6 +26,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.example.demo.dto.AppointmentStatus;
 import com.example.demo.entity.Appointment;
 import com.example.demo.entity.Role;
@@ -58,6 +61,7 @@ public class ChatService {
 
     private final Map<String, Boolean> awaitingBookingDetailsByEmail = new ConcurrentHashMap<>();
     private final RestTemplate restTemplate = new RestTemplate();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public String getChatResponse(String userMessage, String token) {
         try {
@@ -72,22 +76,26 @@ public class ChatService {
             }
 
             String normalized = normalize(userMessage);
-            if (isUpcomingAppointmentsIntent(normalized)) {
-                return getAppointments(patient);
+
+            BookingInput parsed = parseBookingInput(userMessage);
+            if (parsed.isComplete()) {
+                awaitingBookingDetailsByEmail.put(email, false);
+                return bookAppointment(patient, parsed.doctorName, parsed.date, parsed.time, parsed.reason);
             }
 
             boolean bookingIntent = isBookingIntent(normalized);
             boolean awaitingDetails = awaitingBookingDetailsByEmail.getOrDefault(email, false);
             if (bookingIntent || awaitingDetails) {
-                BookingInput parsed = parseBookingInput(userMessage);
-                if (parsed.isComplete()) {
-                    awaitingBookingDetailsByEmail.put(email, false);
-                    return bookAppointment(patient, parsed.doctorName, parsed.date, parsed.time);
-                }
-
                 awaitingBookingDetailsByEmail.put(email, true);
-                return "Please provide all 3 details in one line: doctor name, date, and time. "
-                        + "Example: Aashish 28/03/2026 3:00 PM";
+                return buildBookingPrompt(parsed);
+            }
+
+            if (isGreetingIntent(normalized)) {
+                return "Hello! How can I help you today? I can show your upcoming appointments or book a new one (doctor, date, time, reason).";
+            }
+
+            if (isUpcomingAppointmentsIntent(normalized)) {
+                return getAppointments(patient);
             }
 
             return askAI(userMessage);
@@ -97,6 +105,10 @@ public class ChatService {
     }
 
     private String askAI(String userMessage) {
+        if (apiKey == null || apiKey.isBlank()) {
+            return "I can help with appointments. Ask me about upcoming appointments or booking a visit.";
+        }
+
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
         headers.setBearerAuth(apiKey);
@@ -118,8 +130,18 @@ public class ChatService {
         """.formatted(userMessage);
 
         HttpEntity<String> entity = new HttpEntity<>(body, headers);
-        ResponseEntity<String> response = restTemplate.postForEntity(URL, entity, String.class);
-        return response.getBody();
+        try {
+            ResponseEntity<String> response = restTemplate.postForEntity(URL, entity, String.class);
+            JsonNode root = objectMapper.readTree(response.getBody());
+            JsonNode content = root.path("choices").path(0).path("message").path("content");
+            if (content.isTextual() && !content.asText().isBlank()) {
+                return content.asText();
+            }
+        } catch (Exception ignored) {
+            return "I can help with appointments. Ask me for your upcoming appointments or say: book appointment with doctor name, date, time, and reason (comma separated).";
+        }
+
+        return "I can help with appointments. Ask me for your upcoming appointments or say: book appointment with doctor name, date, time, and reason (comma separated).";
     }
 
     private String getAppointments(User patient) {
@@ -165,7 +187,7 @@ public class ChatService {
         return builder.toString();
     }
 
-    private String bookAppointment(User patient, String doctorName, LocalDate date, LocalTime time) {
+    private String bookAppointment(User patient, String doctorName, LocalDate date, LocalTime time, String reasonText) {
         User doctor = findDoctorByName(doctorName);
         if (doctor == null) {
             return "Doctor not found.";
@@ -190,7 +212,7 @@ public class ChatService {
         appointment.setAppointmentTime(time);
         appointment.setStatus(AppointmentStatus.PENDING);
         appointment.setCreatedAt(LocalDateTime.now());
-        appointment.setReason("Booked via chatbot");
+        appointment.setReason(buildChatbotReason(reasonText));
 
         appointmentRepository.save(appointment);
 
@@ -200,26 +222,51 @@ public class ChatService {
                 + date.format(DateTimeFormatter.ofPattern("dd MMM yyyy"))
                 + " at "
                 + time.format(DateTimeFormatter.ofPattern("hh:mm a"))
+                + ". Reason: "
+                + buildChatbotReason(reasonText)
                 + ". Status: PENDING";
     }
 
     private boolean isUpcomingAppointmentsIntent(String message) {
         return (message.contains("upcoming") || message.contains("next") || message.contains("my"))
-                && message.contains("appointment");
+                && (message.contains("appointment") || message.contains("appoint"));
+    }
+
+    private boolean isGreetingIntent(String message) {
+        return Pattern.compile("\\b(hi|hello|hey)\\b", Pattern.CASE_INSENSITIVE)
+                .matcher(message == null ? "" : message)
+                .find();
     }
 
     private boolean isBookingIntent(String message) {
         return message.contains("book")
                 || message.contains("schedule")
-                || message.contains("appoint")
-                || message.contains("fix an appointment");
+                || message.contains("fix an appointment")
+                || message.contains("fix appointment")
+                || message.contains("set an appointment")
+                || message.contains("set appointment")
+                || message.contains("arrange appointment");
     }
 
     private BookingInput parseBookingInput(String message) {
+        if (message == null) {
+            return new BookingInput("", null, null, "");
+        }
+
+        String[] parts = message.split(",");
+        if (parts.length >= 4) {
+            String doctorName = parts[0].trim();
+            LocalDate date = extractDate(parts[1]);
+            LocalTime time = extractTime(parts[2]);
+            String reason = String.join(",", Arrays.copyOfRange(parts, 3, parts.length)).trim();
+            return new BookingInput(doctorName, date, time, reason);
+        }
+
         LocalDate date = extractDate(message);
         LocalTime time = extractTime(message);
         String doctorName = extractDoctorName(message);
-        return new BookingInput(doctorName, date, time);
+        String reason = extractReason(message, doctorName, date, time);
+        return new BookingInput(doctorName, date, time, reason);
     }
 
     private LocalDate extractDate(String message) {
@@ -334,6 +381,35 @@ public class ChatService {
         return tokens[tokens.length - 1];
     }
 
+    private String extractReason(String message, String doctorName, LocalDate date, LocalTime time) {
+        if (message == null) {
+            return "";
+        }
+
+        String reason = message;
+
+        if (doctorName != null && !doctorName.isBlank()) {
+            String doctorPattern = Pattern.quote(doctorName);
+            reason = reason.replaceAll("(?i)dr\\.\\s*" + doctorPattern, " ");
+            reason = reason.replaceAll("(?i)" + doctorPattern, " ");
+        }
+
+        if (date != null) {
+            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("dd/MM/yyyy")), " ");
+            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("d/M/yyyy")), " ");
+            reason = reason.replace(date.format(DateTimeFormatter.ISO_LOCAL_DATE), " ");
+            reason = reason.replace(date.format(DateTimeFormatter.ofPattern("dd MMM yyyy")), " ");
+        }
+
+        if (time != null) {
+            reason = reason.replace(time.format(DateTimeFormatter.ofPattern("HH:mm")), " ");
+            reason = reason.replace(time.format(DateTimeFormatter.ofPattern("hh:mm a")), " ");
+        }
+
+        reason = reason.replaceAll("\\s+", " ").trim();
+        return reason;
+    }
+
     private User findDoctorByName(String rawName) {
         String target = normalizeDoctorName(rawName);
         if (target.isBlank()) {
@@ -383,6 +459,17 @@ public class ChatService {
         return input == null ? "" : input.toLowerCase(Locale.ROOT);
     }
 
+    private String buildChatbotReason(String userMessage) {
+        String cleaned = userMessage == null ? "" : userMessage.trim();
+        if (cleaned.isBlank()) {
+            return "Booked via chatbot";
+        }
+        if (cleaned.length() > 180) {
+            return cleaned.substring(0, 180);
+        }
+        return cleaned;
+    }
+
     private Map<String, Integer> monthMap() {
         Map<String, Integer> map = new HashMap<>();
         map.put("january", 1);
@@ -416,15 +503,39 @@ public class ChatService {
         private final String doctorName;
         private final LocalDate date;
         private final LocalTime time;
+        private final String reason;
+        private final boolean hasDoctor;
+        private final boolean hasDate;
+        private final boolean hasTime;
+        private final boolean hasReason;
 
-        private BookingInput(String doctorName, LocalDate date, LocalTime time) {
+        private BookingInput(String doctorName, LocalDate date, LocalTime time, String reason) {
             this.doctorName = doctorName;
             this.date = date;
             this.time = time;
+            this.reason = reason;
+            this.hasDoctor = doctorName != null && !doctorName.isBlank();
+            this.hasDate = date != null;
+            this.hasTime = time != null;
+            this.hasReason = reason != null && !reason.isBlank();
         }
 
         private boolean isComplete() {
-            return doctorName != null && !doctorName.isBlank() && date != null && time != null;
+            return hasDoctor && hasDate && hasTime && hasReason;
         }
+    }
+
+    private String buildBookingPrompt(BookingInput parsed) {
+        StringBuilder builder = new StringBuilder("Please add the missing details (doctor, date, time, reason) in one comma-separated line.");
+        if (parsed != null) {
+            builder.append(" Missing:");
+            if (!parsed.hasDoctor) builder.append(" doctor name");
+            if (!parsed.hasDate) builder.append(" date");
+            if (!parsed.hasTime) builder.append(" time");
+            if (!parsed.hasReason) builder.append(" reason");
+            builder.append(".");
+        }
+        builder.append(" Example: Dr. Aashish, 28/03/2026, 3:00 PM, Knee pain follow-up");
+        return builder.toString();
     }
 }

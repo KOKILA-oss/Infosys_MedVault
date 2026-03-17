@@ -2,22 +2,6 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './NotificationsPage.css';
 import axios from 'axios';
-
-
-
-// Local storage helpers (inline so this component can operate without utils)
-function readNotificationsLocal() {
-  try {
-    const raw = localStorage.getItem('notifications');
-    if (!raw) return [];
-    return JSON.parse(raw);
-  } catch  {
-    return [];
-  }
-}
-
-
-
 const formatHeading = (text = '') => {
   return text
     .toLowerCase()                 // convert full caps to lowercase
@@ -25,22 +9,6 @@ const formatHeading = (text = '') => {
     .replace(/\b\w/g, char => char.toUpperCase()); // Capitalize First Letter
 };
 
-function writeNotificationsLocal(list) {
-  try {
-    const unread = list.filter(n => !(n.read === true)).length;
-    localStorage.setItem('notifications', JSON.stringify(list));
-    localStorage.setItem('unreadNotificationCount', String(unread));
-    window.dispatchEvent(new CustomEvent('notifications:updated', { detail: { unread } }));
-  } catch  {
-    // ignore
-  }
-}
-
-function markAllLocalRead() {
-  const list = readNotificationsLocal().map(n => ({ ...n, read: true, unread: false }));
-  writeNotificationsLocal(list);
-  return list;
-}
 const NotificationsPage = () => {
   const navigate = useNavigate();
 
@@ -60,7 +28,7 @@ const NotificationsPage = () => {
     return 'Patient';
   }, [role]);
 
-  const [notifications, setNotifications] = useState(() => readNotificationsLocal());
+  const [notifications, setNotifications] = useState([]);
 
 useEffect(() => {
   const markAll = async () => {
@@ -75,6 +43,7 @@ useEffect(() => {
         headers: { Authorization: `Bearer ${token}` }
       });
       setNotifications(resp.data || []);
+      window.dispatchEvent(new CustomEvent('notifications:updated', { detail: { unread: 0 } }));
     } catch (err) {
       console.error(err);
     }
@@ -84,11 +53,11 @@ useEffect(() => {
 }, []);
 
   useEffect(() => {
-    const token = localStorage.getItem('token');
+      const token = localStorage.getItem('token');
 
     const fetchServer = async () => {
       if (!token) {
-        setNotifications(readNotificationsLocal());
+        setNotifications([]);
         return;
       }
 
@@ -98,7 +67,7 @@ useEffect(() => {
         });
         setNotifications(resp.data || []);
       } catch  {
-        setNotifications(readNotificationsLocal());
+        setNotifications([]);
       }
     };
 
@@ -122,17 +91,12 @@ useEffect(() => {
   const scheduleCount = notificationsList.filter((item) => ['upcoming', 'rescheduled'].includes(mapStatus(item))).length;
 
   useEffect(() => {
-    localStorage.setItem('unreadNotificationCount', String(unreadCount));
     window.dispatchEvent(new CustomEvent('notifications:updated', { detail: { unread: unreadCount } }));
   }, [unreadCount]);
 
   const handleMarkAllRead = () => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      const list = markAllLocalRead();
-      setNotifications(list);
-      return;
-    }
+    if (!token) return;
 
     // mark all unread via backend
     (async () => {
@@ -149,31 +113,33 @@ useEffect(() => {
         const resp = await axios.get('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
         setNotifications(resp.data || []);
       } catch  {
-        setNotifications(markAllLocalRead());
+        setNotifications([]);
       }
     })();
   };
 
   const handleMarkRead = async (id) => {
     const token = localStorage.getItem('token');
-    if (!token) {
-      // fallback to local
-      const list = notifications.map(n => n.id === id ? { ...n, read: true, unread: false } : n);
-      writeNotificationsLocal(list);
-      setNotifications(list);
-      return;
-    }
+    if (!token) return;
 
     try {
       await axios.post(`/api/notifications/mark-read/${id}`, null, { headers: { Authorization: `Bearer ${token}` } });
       const resp = await axios.get('/api/notifications', { headers: { Authorization: `Bearer ${token}` } });
       setNotifications(resp.data || []);
     } catch  {
-      // fallback local update
-      const list = notifications.map(n => n.id === id ? { ...n, read: true, unread: false } : n);
-      setNotifications(list);
-      writeNotificationsLocal(list);
+      setNotifications((current) => current.map((item) => (
+        item.id === id ? { ...item, readStatus: true } : item
+      )));
     }
+  };
+
+  const handleAddToCalendar = (link, e) => {
+    if (!link) return;
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    window.open(link, '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -183,9 +149,14 @@ useEffect(() => {
           <h1>Notifications</h1>
           <p>Upcoming appointments, reschedule or cancel updates, and other alerts.</p>
         </div>
-        <button type="button" className="back-btn" onClick={() => navigate(dashboardRoute)}>
-          Back to Dashboard
-        </button>
+        <div className="notifications-heading-actions">
+          <button type="button" className="back-btn" onClick={handleMarkAllRead}>
+            Mark All Read
+          </button>
+          <button type="button" className="back-btn" onClick={() => navigate(dashboardRoute)}>
+            Back to Dashboard
+          </button>
+        </div>
       </header>
 
       <section className="notifications-stats">
@@ -212,7 +183,11 @@ useEffect(() => {
           const timeLabel = item.createdAt ? new Date(item.createdAt).toLocaleString() : (item.time || '');
 
           return (
-            <article key={item.id} className={`notification-card ${statusClass} ${unread ? 'unread' : 'read'}`}>
+            <article
+              key={item.id}
+              className={`notification-card ${statusClass} ${unread ? 'unread' : 'read'}`}
+              onClick={() => unread && item.id ? handleMarkRead(item.id) : undefined}
+            >
               <div className="notification-top-row">
                 <span className="notification-type">
                   <span className={`notification-dot ${unread ? 'unread' : ''}`} aria-hidden="true" />
@@ -224,6 +199,15 @@ useEffect(() => {
   {formatHeading(item.type)}
 </h2>
               <p>{item.message}</p>
+              {item.link ? (
+                <button
+                  type="button"
+                  className="calendar-link-btn"
+                  onClick={(e) => handleAddToCalendar(item.link, e)}
+                >
+                  Add to Google Calendar
+                </button>
+              ) : null}
             </article>
           );
         })}

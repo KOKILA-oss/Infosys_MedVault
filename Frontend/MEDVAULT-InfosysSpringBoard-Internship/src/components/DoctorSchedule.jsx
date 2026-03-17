@@ -25,6 +25,23 @@ const formatDateKey = (date) => {
   return `${year}-${month}-${day}`;
 };
 
+const formatTimeLabel = (timeValue) => {
+  if (!timeValue) return 'Time pending';
+  const [hours = '0', minutes = '0'] = timeValue.split(':');
+  const date = new Date();
+  date.setHours(Number(hours), Number(minutes), 0, 0);
+  return date.toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
+const getPatientName = (appointment) =>
+  appointment?.patientName ||
+  appointment?.patient?.name ||
+  appointment?.patient?.fullName ||
+  'Patient';
+
 const parseStoredLeaveDates = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(DOCTOR_LEAVE_DATES_KEY) || '[]');
@@ -45,29 +62,33 @@ const sanitizeSlots = (slots) => {
     .filter((slot) => slot.start && slot.end && slot.start < slot.end);
 };
 
+const normalizeScheduleConfig = (rawConfig) => {
+  const storedDays = Array.isArray(rawConfig?.defaultActiveDays)
+    ? rawConfig.defaultActiveDays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+    : [1, 2, 3, 4, 5];
+
+  const dayConfigs = Object.entries(rawConfig?.dayConfigs || {}).reduce((acc, [dateKey, config]) => {
+    acc[dateKey] = {
+      isOffDay: Boolean(config?.isOffDay ?? config?.offDay),
+      offReason: config?.offReason || '',
+      slots: sanitizeSlots(config?.slots)
+    };
+    return acc;
+  }, {});
+
+  return {
+    defaultSlots: sanitizeSlots(rawConfig?.defaultSlots).length
+      ? sanitizeSlots(rawConfig.defaultSlots)
+      : createDefaultSlots(),
+    defaultActiveDays: storedDays.length ? storedDays : [1, 2, 3, 4, 5],
+    dayConfigs
+  };
+};
+
 const parseStoredScheduleConfig = () => {
   try {
     const parsed = JSON.parse(localStorage.getItem(DOCTOR_SCHEDULE_CONFIG_KEY) || '{}');
-    const storedDays = Array.isArray(parsed.defaultActiveDays)
-      ? parsed.defaultActiveDays.filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
-      : [1, 2, 3, 4, 5];
-
-    const dayConfigs = Object.entries(parsed.dayConfigs || {}).reduce((acc, [dateKey, config]) => {
-      acc[dateKey] = {
-        isOffDay: Boolean(config?.isOffDay),
-        offReason: config?.offReason || '',
-        slots: sanitizeSlots(config?.slots)
-      };
-      return acc;
-    }, {});
-
-    return {
-      defaultSlots: sanitizeSlots(parsed.defaultSlots).length
-        ? sanitizeSlots(parsed.defaultSlots)
-        : createDefaultSlots(),
-      defaultActiveDays: storedDays.length ? storedDays : [1, 2, 3, 4, 5],
-      dayConfigs
-    };
+    return normalizeScheduleConfig(parsed);
   } catch {
     return {
       defaultSlots: createDefaultSlots(),
@@ -79,7 +100,7 @@ const parseStoredScheduleConfig = () => {
 
 const DoctorSchedule = () => {
   const navigate = useNavigate();
-  const [totalAppointmentCountByDate, setTotalAppointmentCountByDate] = useState({});
+  const [approvedAppointmentsByDate, setApprovedAppointmentsByDate] = useState({});
   const [defaultSlots, setDefaultSlots] = useState(() => createDefaultSlots());
   const [defaultActiveDays, setDefaultActiveDays] = useState([1, 2, 3, 4, 5]);
   const [dayConfigs, setDayConfigs] = useState({});
@@ -88,43 +109,88 @@ const DoctorSchedule = () => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
   });
+  const [scheduleLoaded, setScheduleLoaded] = useState(false);
 
   useEffect(() => {
-    const config = parseStoredScheduleConfig();
-    setDefaultSlots(config.defaultSlots);
-    setDefaultActiveDays(config.defaultActiveDays);
-    setDayConfigs(config.dayConfigs);
+    const loadSchedule = async () => {
+      const fallbackConfig = parseStoredScheduleConfig();
+      const token = localStorage.getItem('token');
 
-    // Migrate old leave dates to explicit day-off configs.
-    const legacyLeaveDates = parseStoredLeaveDates();
-    if (legacyLeaveDates.length) {
-      setDayConfigs((prev) => {
-        const next = { ...prev };
-        legacyLeaveDates.forEach((dateKey) => {
-          if (!next[dateKey]) {
-            next[dateKey] = {
-              isOffDay: true,
-              offReason: 'Marked as off day',
-              slots: []
-            };
-          }
+      try {
+        if (!token) {
+          setDefaultSlots(fallbackConfig.defaultSlots);
+          setDefaultActiveDays(fallbackConfig.defaultActiveDays);
+          setDayConfigs(fallbackConfig.dayConfigs);
+          return;
+        }
+
+        const response = await axios.get('/api/doctor/schedule', {
+          headers: { Authorization: `Bearer ${token}` }
         });
-        return next;
-      });
-      localStorage.removeItem(DOCTOR_LEAVE_DATES_KEY);
-    }
+
+        const config = normalizeScheduleConfig(response.data || {});
+        setDefaultSlots(config.defaultSlots);
+        setDefaultActiveDays(config.defaultActiveDays);
+        setDayConfigs(config.dayConfigs);
+        localStorage.setItem(DOCTOR_SCHEDULE_CONFIG_KEY, JSON.stringify(config));
+      } catch (error) {
+        console.error('Failed to load doctor schedule, using local fallback', error);
+        setDefaultSlots(fallbackConfig.defaultSlots);
+        setDefaultActiveDays(fallbackConfig.defaultActiveDays);
+        setDayConfigs(fallbackConfig.dayConfigs);
+      } finally {
+        setScheduleLoaded(true);
+      }
+    };
+
+    loadSchedule();
   }, []);
 
   useEffect(() => {
+    if (!scheduleLoaded) return;
+
+    const sanitizedConfig = {
+      defaultSlots: sanitizeSlots(defaultSlots),
+      defaultActiveDays,
+      dayConfigs
+    };
+
     localStorage.setItem(
       DOCTOR_SCHEDULE_CONFIG_KEY,
-      JSON.stringify({
-        defaultSlots: sanitizeSlots(defaultSlots),
-        defaultActiveDays,
-        dayConfigs
-      })
+      JSON.stringify(sanitizedConfig)
     );
-  }, [defaultSlots, defaultActiveDays, dayConfigs]);
+
+    const token = localStorage.getItem('token');
+    if (!token) return;
+
+    axios.put('/api/doctor/schedule', sanitizedConfig, {
+      headers: { Authorization: `Bearer ${token}` }
+    }).catch((error) => {
+      console.error('Failed to save doctor schedule', error);
+    });
+  }, [defaultSlots, defaultActiveDays, dayConfigs, scheduleLoaded]);
+
+  useEffect(() => {
+    if (!scheduleLoaded) return;
+
+    const legacyLeaveDates = parseStoredLeaveDates();
+    if (!legacyLeaveDates.length) return;
+
+    setDayConfigs((prev) => {
+      const next = { ...prev };
+      legacyLeaveDates.forEach((dateKey) => {
+        if (!next[dateKey]) {
+          next[dateKey] = {
+            isOffDay: true,
+            offReason: 'Marked as off day',
+            slots: []
+          };
+        }
+      });
+      return next;
+    });
+    localStorage.removeItem(DOCTOR_LEAVE_DATES_KEY);
+  }, [scheduleLoaded]);
 
   useEffect(() => {
     const loadAppointmentCounts = async () => {
@@ -137,15 +203,30 @@ const DoctorSchedule = () => {
         });
 
         const data = Array.isArray(resp.data) ? resp.data : [];
-        const totalCounts = data.reduce((acc, item) => {
-          if (!item.appointmentDate) return acc;
-          acc[item.appointmentDate] = (acc[item.appointmentDate] || 0) + 1;
+        const approvedAppointments = data.reduce((acc, item) => {
+          if ((item?.status || '').toUpperCase() !== 'APPROVED' || !item?.appointmentDate) return acc;
+
+          const dateKey = item.appointmentDate;
+          if (!acc[dateKey]) {
+            acc[dateKey] = [];
+          }
+
+          acc[dateKey].push({
+            id: item.id,
+            patientName: getPatientName(item),
+            time: item.appointmentTime || item.time || ''
+          });
           return acc;
         }, {});
 
-        setTotalAppointmentCountByDate(totalCounts);
+        Object.values(approvedAppointments).forEach((appointments) => {
+          appointments.sort((first, second) => (first.time || '').localeCompare(second.time || ''));
+        });
+
+        setApprovedAppointmentsByDate(approvedAppointments);
       } catch (error) {
         console.error('Failed to load schedule appointment counts', error);
+        setApprovedAppointmentsByDate({});
       }
     };
 
@@ -290,7 +371,7 @@ const DoctorSchedule = () => {
         dateKey,
         isOffDay: Boolean(dateConfig.isOffDay),
         slotCount,
-        totalAppointments: totalAppointmentCountByDate[dateKey] || 0,
+        approvedAppointments: approvedAppointmentsByDate[dateKey] || [],
         isToday: dateKey === formatDateKey(new Date())
       });
     }
@@ -299,7 +380,7 @@ const DoctorSchedule = () => {
       monthLabel: scheduleMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' }),
       cells
     };
-  }, [scheduleMonth, dayConfigs, totalAppointmentCountByDate, defaultSlots, defaultActiveDays]);
+  }, [scheduleMonth, dayConfigs, approvedAppointmentsByDate, defaultSlots, defaultActiveDays]);
 
   return (
     <div className="doctor-schedule-page">
@@ -471,11 +552,27 @@ const DoctorSchedule = () => {
                   type="button"
                   className={`calendar-cell day ${cell.isOffDay ? 'busy' : ''} ${cell.isToday ? 'today' : ''} ${selectedDateKey === cell.dateKey ? 'selected' : ''}`}
                   onClick={() => setSelectedDateKey(cell.dateKey)}
-                  title={cell.isOffDay ? 'Marked as Off Day' : 'Customize Day Schedule'}
+                  title={
+                    cell.approvedAppointments.length
+                      ? cell.approvedAppointments
+                          .map((appointment) => `${formatTimeLabel(appointment.time)} - ${appointment.patientName}`)
+                          .join('\n')
+                      : (cell.isOffDay ? 'Marked as Off Day' : 'No approved appointments')
+                  }
                 >
                   <span className="day-number">{cell.day}</span>
                   <span className="slot-count-label">{cell.slotCount} {cell.slotCount === 1 ? 'slot' : 'slots'}</span>
-                  <span className="appointments-count-label">{cell.totalAppointments} {cell.totalAppointments === 1 ? 'appointment' : 'appointments'}</span>
+                  <span className="appointments-count-label">{cell.approvedAppointments.length} {cell.approvedAppointments.length === 1 ? 'approved appointment' : 'approved appointments'}</span>
+                  {cell.approvedAppointments.length ? (
+                    <span className="calendar-hover-card" aria-hidden="true">
+                      <strong>Approved bookings</strong>
+                      {cell.approvedAppointments.map((appointment) => (
+                        <span key={appointment.id || `${appointment.patientName}-${appointment.time}`}>
+                          {formatTimeLabel(appointment.time)} - {appointment.patientName}
+                        </span>
+                      ))}
+                    </span>
+                  ) : null}
                 </button>
               )
             )}

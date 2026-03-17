@@ -13,4 +13,5 @@ import com.example.demo.entity.User;
     boolean existsByAppointment(Appointment appointment);
 
     List<Feedback> findByDoctor(User doctor);
+    List<Feedback> findByPatient(User patient);
 }

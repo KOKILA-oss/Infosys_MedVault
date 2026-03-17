@@ -13,6 +13,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.Lob;
 import jakarta.persistence.ManyToOne;
 
+import com.example.demo.entity.Appointment;
+
 @Entity
 public class MedicalRecord {
 
@@ -23,6 +25,14 @@ public class MedicalRecord {
     @ManyToOne
     @JoinColumn(name = "owner_id", nullable = false)
     private User owner;
+
+    @ManyToOne
+    @JoinColumn(name = "shared_doctor_id")
+    private User sharedDoctor;
+
+    @ManyToOne
+    @JoinColumn(name = "appointment_id")
+    private Appointment appointment;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -40,8 +50,8 @@ public class MedicalRecord {
     private String contentType;
 
     @Lob
-    @Column(nullable = false)
-    private byte[] fileData;
+@Column(name = "file_data", nullable = false, columnDefinition = "LONGBLOB")
+private byte[] fileData;
 
     @Column(nullable = false)
     private LocalDateTime createdAt;
@@ -75,6 +85,22 @@ public class MedicalRecord {
 
     public void setCategory(MedicalRecordCategory category) {
         this.category = category;
+    }
+
+    public User getSharedDoctor() {
+        return sharedDoctor;
+    }
+
+    public void setSharedDoctor(User sharedDoctor) {
+        this.sharedDoctor = sharedDoctor;
+    }
+
+    public Appointment getAppointment() {
+        return appointment;
+    }
+
+    public void setAppointment(Appointment appointment) {
+        this.appointment = appointment;
     }
 
     public String getTitle() {

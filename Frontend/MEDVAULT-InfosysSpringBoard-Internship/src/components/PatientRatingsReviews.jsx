@@ -3,17 +3,6 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import './PatientRatingsReviews.css';
 
-const REVIEWS_KEY = 'patientDoctorRatings';
-
-const parseStorage = () => {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(REVIEWS_KEY) || '{}');
-    return parsed && typeof parsed === 'object' ? parsed : {};
-  } catch {
-    return {};
-  }
-};
-
 const toVisitDateTime = (appointmentDate, appointmentTime) => {
   const date = new Date(`${appointmentDate}T${appointmentTime || '00:00'}`);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -69,8 +58,7 @@ const PatientRatingsReviews = () => {
     const loadVisits = async () => {
       setLoading(true);
       const token = localStorage.getItem('token');
-      const existingReviews = parseStorage();
-      setSavedReviews(existingReviews);
+      let existingReviews = {};
 
       let apiAppointments = [];
       if (token) {
@@ -83,7 +71,31 @@ const PatientRatingsReviews = () => {
         } catch (error) {
           console.error('Failed to fetch patient appointments for reviews', error);
         }
+
+        try {
+          const feedbackResponse = await axios.get('/api/feedback/mine', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          existingReviews = (Array.isArray(feedbackResponse.data) ? feedbackResponse.data : []).reduce((acc, item) => {
+            const appointmentId = item?.appointmentId;
+            if (appointmentId === null || appointmentId === undefined) return acc;
+            acc[String(appointmentId)] = {
+              rating: Number(item.rating || 0),
+              review: item.comment || '',
+              doctorName: item.doctorName || 'Doctor',
+              hospitalName: item.hospitalName || 'Hospital',
+              visitLabel: item.createdAt || '',
+              submittedAt: item.createdAt || ''
+            };
+            return acc;
+          }, {});
+        } catch (error) {
+          console.error('Failed to fetch saved feedback', error);
+        }
       }
+
+      setSavedReviews(existingReviews);
 
       const now = new Date();
 
@@ -147,14 +159,6 @@ const PatientRatingsReviews = () => {
     [savedReviews]
   );
 
-  const averageRating = useMemo(() => {
-    const values = Object.values(savedReviews)
-      .map((item) => Number(item?.rating || 0))
-      .filter((value) => value > 0);
-    if (values.length === 0) return '0.0';
-    return (values.reduce((sum, value) => sum + value, 0) / values.length).toFixed(1);
-  }, [savedReviews]);
-
   const updateDraft = (visitId, nextValues) => {
     setDrafts((current) => ({
       ...current,
@@ -166,23 +170,35 @@ const PatientRatingsReviews = () => {
   };
 
   const handleSaveReview = (visit) => {
+    const token = localStorage.getItem('token');
     const draft = drafts[visit.id] || { rating: 0, review: '' };
-    if (!draft.rating) return;
+    if (!draft.rating || !token) return;
 
-    const nextReviews = {
-      ...savedReviews,
-      [visit.id]: {
-        rating: draft.rating,
-        review: draft.review.trim(),
-        doctorName: visit.doctorName,
-        hospitalName: visit.hospitalName,
-        visitLabel: formatVisitLabel(visit.appointmentDate, visit.appointmentTime),
-        submittedAt: new Date().toISOString()
+    (async () => {
+      try {
+        await axios.post('/api/feedback', {
+          appointmentId: Number(visit.id),
+          rating: Number(draft.rating),
+          comment: draft.review.trim()
+        }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        setSavedReviews((current) => ({
+          ...current,
+          [visit.id]: {
+            rating: draft.rating,
+            review: draft.review.trim(),
+            doctorName: visit.doctorName,
+            hospitalName: visit.hospitalName,
+            visitLabel: formatVisitLabel(visit.appointmentDate, visit.appointmentTime),
+            submittedAt: new Date().toISOString()
+          }
+        }));
+      } catch (error) {
+        console.error('Failed to submit feedback', error);
       }
-    };
-
-    setSavedReviews(nextReviews);
-    localStorage.setItem(REVIEWS_KEY, JSON.stringify(nextReviews));
+    })();
   };
 
   return (
@@ -201,10 +217,6 @@ const PatientRatingsReviews = () => {
         <div className="summary-card">
           <span>Total Reviews</span>
           <strong>{reviewedCount}</strong>
-        </div>
-        <div className="summary-card">
-          <span>Average Rating</span>
-          <strong>{averageRating} / 5</strong>
         </div>
       </section>
 

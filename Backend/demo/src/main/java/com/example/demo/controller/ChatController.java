@@ -3,13 +3,14 @@ package com.example.demo.controller;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 
+import com.example.demo.dto.ChatResponse;
 import com.example.demo.dto.ChatRequest;
 import com.example.demo.service.ChatService;
 
 import jakarta.servlet.http.HttpServletRequest;
 
 @RestController
-@RequestMapping("/chat")
+@RequestMapping("/api/chat")
 @CrossOrigin
 public class ChatController {
 
@@ -17,8 +18,8 @@ public class ChatController {
     private ChatService chatService;
 
     @PostMapping
-    public String chat(@RequestBody ChatRequest request,
-                       HttpServletRequest httpRequest) {
+    public ChatResponse chat(@RequestBody ChatRequest request,
+                             HttpServletRequest httpRequest) {
 
         String authHeader = httpRequest.getHeader("Authorization");
 
@@ -28,6 +29,6 @@ public class ChatController {
             token = authHeader.substring(7);
         }
 
-        return chatService.getChatResponse(request.getMessage(), token);
+        return new ChatResponse(chatService.getChatResponse(request.getMessage(), token));
     }
 }

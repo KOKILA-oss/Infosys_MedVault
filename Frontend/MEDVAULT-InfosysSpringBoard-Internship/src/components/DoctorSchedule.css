@@ -153,6 +153,7 @@
 }
 
 .calendar-cell.day {
+  position: relative;
   display: grid;
   justify-items: start;
   align-content: start;
@@ -166,6 +167,7 @@
   border-color: var(--primary);
   transform: translateY(-1px);
   box-shadow: var(--shadow-sm);
+  z-index: 2;
 }
 
 .calendar-cell.day.today {
@@ -216,6 +218,41 @@
 .calendar-cell.day.busy .appointments-count-label {
   border-color: color-mix(in srgb, var(--warning) 45%, var(--border-light));
   color: color-mix(in srgb, var(--warning) 70%, var(--text-primary));
+}
+
+.calendar-hover-card {
+  position: absolute;
+  left: 0.45rem;
+  top: calc(100% + 0.45rem);
+  min-width: 200px;
+  max-width: 260px;
+  padding: 0.7rem 0.75rem;
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  background: color-mix(in srgb, var(--bg-card) 96%, white);
+  box-shadow: var(--shadow-md);
+  display: none;
+  gap: 0.35rem;
+  text-align: left;
+  pointer-events: none;
+}
+
+.calendar-hover-card strong,
+.calendar-hover-card span {
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: var(--text-primary);
+}
+
+.calendar-hover-card strong {
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.calendar-cell.day:hover .calendar-hover-card,
+.calendar-cell.day:focus-visible .calendar-hover-card {
+  display: grid;
 }
 
 .default-schedule-card,

@@ -1,0 +1,50 @@
+.doctor-prescriptions-page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px;
+}
+
+.dp-header h1 {
+  margin: 0 0 4px;
+}
+
+.dp-card {
+  background: #fff;
+  border: 1px solid #e5edff;
+  border-radius: 12px;
+  padding: 16px;
+  margin-top: 16px;
+  box-shadow: 0 8px 16px rgba(0,0,0,0.04);
+}
+
+.dp-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.dp-field input,
+.dp-field select,
+.dp-field textarea {
+  border: 1px solid #d6e4ff;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.dp-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 12px;
+}
+
+.dp-message {
+  margin: 8px 0;
+  color: #0f62fe;
+}
+
+.dp-entry {
+  border-top: 1px solid #eef2ff;
+  padding-top: 8px;
+  margin-top: 8px;
+}

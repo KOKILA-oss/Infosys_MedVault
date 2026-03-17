@@ -1,6 +1,7 @@
 package com.example.demo.service;
 
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.util.List;
 
 import org.springframework.stereotype.Service;
@@ -38,8 +39,12 @@ public class FeedbackService {
         Appointment appointment = appointmentRepository.findById(request.getAppointmentId())
                 .orElseThrow(() -> new RuntimeException("Appointment not found"));
 
-        if (!appointment.getStatus().equals(AppointmentStatus.COMPLETED)) {
-            throw new RuntimeException("Only completed appointments can be reviewed");
+        if (appointment.getPatient() == null || !appointment.getPatient().getId().equals(patient.getId())) {
+            throw new RuntimeException("You can review only your own appointments");
+        }
+
+        if (!isReviewEligible(appointment)) {
+            throw new RuntimeException("Only past completed appointments can be reviewed");
         }
 
         if (feedbackRepository.existsByAppointment(appointment)) {
@@ -57,12 +62,46 @@ public class FeedbackService {
         feedbackRepository.save(feedback);
     }
 
+    private boolean isReviewEligible(Appointment appointment) {
+        if (appointment.getStatus() == AppointmentStatus.CANCELLED) {
+            return false;
+        }
+
+        if (appointment.getStatus() == AppointmentStatus.COMPLETED) {
+            return true;
+        }
+
+        if (appointment.getStatus() != AppointmentStatus.APPROVED) {
+            return false;
+        }
+
+        if (appointment.getAppointmentDate() == null) {
+            return false;
+        }
+
+        LocalDateTime appointmentDateTime = appointment.getAppointmentTime() == null
+                ? appointment.getAppointmentDate().atTime(LocalTime.MAX)
+                : appointment.getAppointmentDate().atTime(appointment.getAppointmentTime());
+
+        return !appointmentDateTime.isAfter(LocalDateTime.now());
+    }
+
     public List<FeedbackResponse> getDoctorFeedbacks(String doctorEmail) {
 
         User doctor = userRepository.findByEmail(doctorEmail)
                 .orElseThrow(() -> new RuntimeException("Doctor not found"));
 
         return feedbackRepository.findByDoctor(doctor)
+                .stream()
+                .map(FeedbackResponse::new)
+                .toList();
+    }
+
+    public List<FeedbackResponse> getPatientFeedbacks(String patientEmail) {
+        User patient = userRepository.findByEmail(patientEmail)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        return feedbackRepository.findByPatient(patient)
                 .stream()
                 .map(FeedbackResponse::new)
                 .toList();

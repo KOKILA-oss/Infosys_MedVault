@@ -5,6 +5,7 @@ import java.util.List;
 
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -14,6 +15,7 @@ import org.springframework.web.bind.annotation.RestController;
 import com.example.demo.entity.Notification;
 import com.example.demo.entity.User;
 import com.example.demo.service.NotificationService;
+import com.example.demo.dto.ReportShareNotificationRequest;
 import com.example.demo.repository.NotificationRepository;
 import com.example.demo.repository.UserRepository;
 
@@ -66,6 +68,23 @@ public ResponseEntity<Long> getUnreadCount(Authentication authentication) {
     public ResponseEntity<List<Notification>> myNotifications(Principal principal) {
         List<Notification> list = notificationService.getNotificationsForUser(principal.getName());
         return ResponseEntity.ok(list);
+    }
+
+    @PostMapping("/report-shared")
+    public ResponseEntity<?> notifyReportShared(@RequestBody ReportShareNotificationRequest request,
+                                                Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            throw new RuntimeException("Unauthorized");
+        }
+
+        notificationService.notifyDoctorAboutSharedReport(
+                authentication.getName(),
+                request.getDoctorEmail(),
+                request.getDoctorName(),
+                request.getFileName()
+        );
+
+        return ResponseEntity.ok("Doctor notified about shared report");
     }
 
     

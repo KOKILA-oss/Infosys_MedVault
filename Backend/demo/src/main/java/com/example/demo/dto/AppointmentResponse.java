@@ -15,6 +15,7 @@ public class AppointmentResponse {
     private LocalDate appointmentDate;
     private LocalTime appointmentTime;
     private String status;
+    private String reason;
 
     public AppointmentResponse(Appointment appointment) {
         this.id = appointment.getId();
@@ -25,6 +26,7 @@ public class AppointmentResponse {
         this.appointmentDate = appointment.getAppointmentDate();
         this.appointmentTime = appointment.getAppointmentTime();
         this.status = appointment.getStatus().name();
+        this.reason = appointment.getReason();
     }
 
     public Long getId() { return id; }
@@ -35,4 +37,5 @@ public class AppointmentResponse {
     public LocalDate getAppointmentDate() { return appointmentDate; }
     public LocalTime getAppointmentTime() { return appointmentTime; }
     public String getStatus() { return status; }
+    public String getReason() { return reason; }
 }

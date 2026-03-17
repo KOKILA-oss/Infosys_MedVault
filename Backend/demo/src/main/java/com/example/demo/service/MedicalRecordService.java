@@ -18,9 +18,11 @@ import com.example.demo.entity.MedicalRecordCategory;
 import com.example.demo.entity.MedicalRecordConsent;
 import com.example.demo.entity.Role;
 import com.example.demo.entity.User;
+import com.example.demo.entity.Appointment;
 import com.example.demo.repository.MedicalRecordAuditLogRepository;
 import com.example.demo.repository.MedicalRecordConsentRepository;
 import com.example.demo.repository.MedicalRecordRepository;
+import com.example.demo.repository.AppointmentRepository;
 import com.example.demo.repository.UserRepository;
 
 @Service
@@ -30,15 +32,18 @@ public class MedicalRecordService {
     private final MedicalRecordConsentRepository consentRepository;
     private final MedicalRecordAuditLogRepository auditLogRepository;
     private final UserRepository userRepository;
+    private final AppointmentRepository appointmentRepository;
 
     public MedicalRecordService(MedicalRecordRepository medicalRecordRepository,
                                 MedicalRecordConsentRepository consentRepository,
                                 MedicalRecordAuditLogRepository auditLogRepository,
-                                UserRepository userRepository) {
+                                UserRepository userRepository,
+                                AppointmentRepository appointmentRepository) {
         this.medicalRecordRepository = medicalRecordRepository;
         this.consentRepository = consentRepository;
         this.auditLogRepository = auditLogRepository;
         this.userRepository = userRepository;
+        this.appointmentRepository = appointmentRepository;
     }
 
     @Transactional
@@ -46,7 +51,9 @@ public class MedicalRecordService {
                                               MultipartFile file,
                                               String title,
                                               String description,
-                                              MedicalRecordCategory category) {
+                                              MedicalRecordCategory category,
+                                              Long sharedDoctorId,
+                                              Long appointmentId) {
         User patient = getPatientByEmail(patientEmail);
         if (file == null || file.isEmpty()) {
             throw new RuntimeException("File is required");
@@ -67,6 +74,24 @@ public class MedicalRecordService {
         record.setContentType(file.getContentType() == null ? "application/octet-stream" : file.getContentType());
         record.setCreatedAt(LocalDateTime.now());
         record.setDeleted(false);
+
+        if (sharedDoctorId != null) {
+          User doctor = userRepository.findById(sharedDoctorId)
+                  .orElseThrow(() -> new RuntimeException("Doctor not found"));
+          if (doctor.getRole() != Role.DOCTOR) {
+              throw new RuntimeException("Selected user is not a doctor");
+          }
+          record.setSharedDoctor(doctor);
+        }
+
+        if (appointmentId != null) {
+            Appointment appointment = appointmentRepository.findById(appointmentId)
+                    .orElseThrow(() -> new RuntimeException("Appointment not found"));
+            if (appointment.getPatient() == null || !appointment.getPatient().getId().equals(patient.getId())) {
+                throw new RuntimeException("Selected appointment does not belong to the patient");
+            }
+            record.setAppointment(appointment);
+        }
 
         try {
             record.setFileData(file.getBytes());
@@ -176,6 +201,18 @@ public class MedicalRecordService {
             throw new RuntimeException("Selected user is not a patient");
         }
 
+        if (category == MedicalRecordCategory.TEST_REPORT) {
+            List<MedicalRecord> testReports = medicalRecordRepository
+                    .findByOwnerAndSharedDoctorAndCategoryAndDeletedFalseOrderByCreatedAtDesc(patient, doctor, category);
+
+            for (MedicalRecord record : testReports) {
+                logAudit(record.getId(), "DOCTOR_VIEW_LIST", doctor.getEmail(), doctor.getRole().name(),
+                        "Viewed test report metadata for patient " + patient.getId());
+            }
+
+            return testReports.stream().map(MedicalRecordResponse::new).toList();
+        }
+
         List<MedicalRecordConsent> consents = getValidConsents(patient, doctor);
         if (consents.isEmpty()) {
             throw new RuntimeException("No active consent available");
@@ -213,6 +250,15 @@ public class MedicalRecordService {
         User doctor = getDoctorByEmail(doctorEmail);
         MedicalRecord record = medicalRecordRepository.findByIdAndDeletedFalse(recordId)
                 .orElseThrow(() -> new RuntimeException("Record not found"));
+
+        if (record.getCategory() == MedicalRecordCategory.TEST_REPORT) {
+            if (record.getSharedDoctor() == null || !record.getSharedDoctor().getId().equals(doctor.getId())) {
+                throw new RuntimeException("This test report is not shared with this doctor");
+            }
+
+            logAudit(record.getId(), "DOCTOR_DOWNLOAD", doctor.getEmail(), doctor.getRole().name(), "Downloaded record");
+            return record;
+        }
 
         List<MedicalRecordConsent> consents = getValidConsents(record.getOwner(), doctor);
         boolean allowed = false;

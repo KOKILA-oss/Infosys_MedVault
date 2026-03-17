@@ -28,16 +28,59 @@ public class NotificationService {
                                            String type,
                                            String message,
                                            Appointment appointment) {
+        return createNotification(recipient, sender, type, message, appointment, null);
+    }
+
+    public Notification createNotification(User recipient,
+                                           User sender,
+                                           String type,
+                                           String message,
+                                           Appointment appointment,
+                                           String link) {
         Notification n = new Notification();
         n.setRecipient(recipient);
         n.setSender(sender);
         n.setType(type);
         n.setMessage(message);
+        n.setLink(link);
         n.setAppointment(appointment);
         n.setReadStatus(false);
         n.setCreatedAt(LocalDateTime.now());
 
         return notificationRepository.save(n);
+    }
+
+    public Notification notifyDoctorAboutSharedReport(String patientEmail,
+                                                      String doctorEmail,
+                                                      String doctorName,
+                                                      String fileName) {
+        User sender = userRepository.findByEmail(patientEmail)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+
+        User recipient = userRepository.findByEmail(doctorEmail)
+                .orElseGet(() -> {
+                    if (doctorName == null || doctorName.trim().isEmpty()) {
+                        throw new RuntimeException("Doctor not found");
+                    }
+                    User byName = userRepository.findByNameIgnoreCase(doctorName.trim());
+                    if (byName == null) {
+                        throw new RuntimeException("Doctor not found");
+                    }
+                    return byName;
+                });
+
+        String patientName = sender.getName() == null || sender.getName().trim().isEmpty()
+                ? sender.getEmail()
+                : sender.getName().trim();
+        String safeFileName = fileName == null || fileName.trim().isEmpty() ? "a test report" : fileName.trim();
+
+        return createNotification(
+                recipient,
+                sender,
+                "REPORT_SHARED",
+                patientName + " shared " + safeFileName + " with you.",
+                null
+        );
     }
 
     public void markAllAsRead(String email) {
